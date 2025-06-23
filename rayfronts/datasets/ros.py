@@ -41,6 +41,7 @@ try:
   from sensor_msgs.msg import Image, CameraInfo, PointCloud
   from geometry_msgs.msg import PoseStamped
   from stereo_msgs.msg import DisparityImage
+  from nav_msgs.msg import Odometry
   from rayfronts.ros_utils import image_to_numpy, pose_to_numpy
 except ModuleNotFoundError:
   logger.warning("ROS2 modules not found !")
@@ -66,6 +67,7 @@ class Ros2Subscriber(PosedRgbdDataset):
                rgb_resolution=None,
                depth_resolution=None,
                disparity_topic = None,
+               depth_topic = None,
                confidence_topic = None,
                point_cloud_topic = None,
                intrinsics_topic = None,
@@ -75,9 +77,10 @@ class Ros2Subscriber(PosedRgbdDataset):
                interp_mode="bilinear"):
     """
 
-    There can be two sources of depth:
+    There can be three sources of depth:
     1- Disparity topic
-    2- Point cloud topic (will be projected using pose and intrinsics)
+    2- Depth topic
+    3- Point cloud topic (will be projected using pose and intrinsics)
        Using the point cloud through this rgbd loader is inefficient as points
        will be projected then likely unprojected again in the mapping system.
 
@@ -88,6 +91,8 @@ class Ros2Subscriber(PosedRgbdDataset):
       pose_topic: Topic containing poses of type geometry_msgs/msg/PoseStamped
       disparity_topic: Topic containing disparity images of type
         stereo_msgs/DisparityImage.
+      depth_topic: Topic containing depth images of type sensor_msgs/msg/Image
+        with 32FC1 encoding in metric scale.
       confidence_topic: (Optional) Topic containing confidence in depth values.
         Message type: sensor_msgs/msg/Image.
       point_cloud_topic: Topic containing point cloud of type
@@ -137,10 +142,11 @@ class Ros2Subscriber(PosedRgbdDataset):
       rgb = Image,
       pose = PoseStamped,
       disp = DisparityImage,
+      depth = Image,
       pc = PointCloud,
       conf = Image,
     )
-    self._topics = [rgb_topic, pose_topic, disparity_topic, point_cloud_topic,
+    self._topics = [rgb_topic, pose_topic, disparity_topic, depth_topic, point_cloud_topic,
                    confidence_topic]
     if not rclpy.ok():
       rclpy.init()
@@ -247,7 +253,10 @@ class Ros2Subscriber(PosedRgbdDataset):
       rdf_pose_4x4 = g3d.transform_pose_4x4(
         src_pose_4x4, self.src2rdf_transform)
 
-      if "disp" in msgs.keys():
+      if 'depth' in msgs.keys():
+        depth_img = image_to_numpy(msgs["depth"])
+        depth_img = torch.tensor(depth_img, dtype=torch.float).unsqueeze(0)
+      elif "disp" in msgs.keys():
         # TODO: Why is disparity negative in ros2 zedx and why is max and min
         # flipped? Not sure if this is correct ros2 zedx behaviour but will
         # correct those here for now.
@@ -290,7 +299,7 @@ class Ros2Subscriber(PosedRgbdDataset):
         depth_img[:, v[mask], u[mask]] = pc_depth[mask]
         depth_img[depth_img < 0] = -torch.infs
       else:
-        raise ValueError("Expected at least a disparity or point cloud topic")
+        raise ValueError("Expected at least a depth or a disparity or point cloud topic")
 
       # Parse confidence map if it exists
       conf_img = None

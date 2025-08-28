@@ -3,7 +3,7 @@
   for Online Scene Understanding and Exploration</h1>
 
 <p align="center">
-  <a href="https://www.linkedin.com/in/omaralama/"><strong>Omar Alama</strong></a>
+  <a href="https://oasisartisan.github.io/"><strong>Omar Alama</strong></a>
   .
   <a href="https://www.linkedin.com/in/avigyan-bhattacharya"><strong>Avigyan Bhattacharya</strong></a>
   ·
@@ -22,7 +22,7 @@
   <a href="https://theairlab.org/team/sebastian/"><strong>Sebastian Scherer</strong></a>
 </p>
 
-  <h3 align="center"><a href="https://arxiv.org/abs/2504.06994">Paper</a> | <a href="https://RayFronts.github.io/">Project Page</a> | <a href="https://www.youtube.com/watch?v=fFSKUBHx5gA">Video</a></h3>
+  <h3 align="center"><a href="https://arxiv.org/abs/2504.06994">Paper</a> | <a href="https://RayFronts.github.io/">Project Page</a> | <a href="https://www.youtube.com/watch?v=fFSKUBHx5gA">Video</a> | <a href="https://www.youtube.com/watch?v=_tIVlw1Wrh4">Podcast</a> | <a href="https://x.com/OmarAlama/status/1910102471587831997">Thread</a></h3>
   <div align="center"></div>
 
 

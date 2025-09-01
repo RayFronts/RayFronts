@@ -20,6 +20,9 @@ occ_pruning_tolerance: 2
 # semantic voxels that are no longer occupied). Set to -1 to disable.
 sem_pruning_period: 8
 
+# Voxels with log-odds occupancy <= this value are removed.
+sem_pruning_thresh: 0
+
 # How many points to project per frame. Set to -1 to project all valid depth
 # points.
 max_pts_per_frame: -1

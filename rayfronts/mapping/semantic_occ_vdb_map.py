@@ -56,6 +56,7 @@ class SemanticOccVDBMap(SemanticRGBDMapping):
     vox_accum_period: See __init__.
     occ_pruning_tolerance: See __init__.
     occ_pruning_period: See __init__.
+    sem_pruning_thresh: See __init__.
     sem_pruning_period: See __init__.
 
     occ_map_vdb: An OpenVDB Int8 Grid storing log-odds occupancy.
@@ -87,6 +88,7 @@ class SemanticOccVDBMap(SemanticRGBDMapping):
                occ_thickness: int = 2,
                occ_pruning_tolerance: int = 2,
                occ_pruning_period: int = 1,
+               sem_pruning_thresh: int = 0,
                sem_pruning_period: int = 1):
     """
     Args:
@@ -126,6 +128,8 @@ class SemanticOccVDBMap(SemanticRGBDMapping):
       occ_pruning_tolerance: Tolerance when merging voxels into bigger nodes.
       occ_pruning_period: How often do we prune occupancy into bigger voxels.
         Set to -1 to disable.
+      sem_pruning_thresh: Voxels with log-odds occupancy below this value are
+        removed.
       sem_pruning_period: How often do we prune semantic voxels to reflect
         occupancy (That is erase semantic voxels that are no longer occupied).
         Set to -1 to disable.
@@ -139,6 +143,7 @@ class SemanticOccVDBMap(SemanticRGBDMapping):
     self.occ_pruning_tolerance = occ_pruning_tolerance
     self._occ_pruning_cnt = 0
     self.sem_pruning_period = sem_pruning_period
+    self.sem_pruning_thresh = sem_pruning_thresh
     self._sem_pruning_cnt = 0
 
     self.vox_size = vox_size
@@ -215,7 +220,8 @@ class SemanticOccVDBMap(SemanticRGBDMapping):
                          rgb_img: torch.FloatTensor,
                          depth_img: torch.FloatTensor,
                          pose_4x4: torch.FloatTensor,
-                         conf_map: torch.FloatTensor = None) -> dict:
+                         conf_map: torch.FloatTensor = None,
+                         feat_img: torch.FloatTensor = None) -> dict:
     update_info = dict()
 
     vox_xyz, vox_occ, pc_xyz, selected_indices = \
@@ -246,7 +252,9 @@ class SemanticOccVDBMap(SemanticRGBDMapping):
 
     feat_img = None
     if self.encoder is not None:
-      feat_img = self._compute_proj_resize_feat_map(rgb_img, dH, dW)
+      if feat_img is None:
+        feat_img = self.encoder.encode_image_to_feat_map(rgb_img)
+      feat_img = self._proj_resize_feat_map(feat_img, dH, dW)
       update_info["feat_img"] = feat_img
 
     if pc_xyz.shape[0] > 0:
@@ -352,7 +360,8 @@ class SemanticOccVDBMap(SemanticRGBDMapping):
     updated_vox_occ = rayfronts_cpp.query_occ(
       self.occ_map_vdb, updated_vox_xyz.cpu()).to(self.device)
 
-    vox_xyz_to_remove = updated_vox_xyz[updated_vox_occ.squeeze(-1) <= 0]
+    vox_xyz_to_remove = updated_vox_xyz[updated_vox_occ.squeeze(-1) <=
+                                        self.sem_pruning_thresh]
 
     self.global_vox_xyz, flag = g3d.intersect_voxels(
       self.global_vox_xyz, vox_xyz_to_remove, self.vox_size)

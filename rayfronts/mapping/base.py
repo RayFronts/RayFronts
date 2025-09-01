@@ -295,7 +295,8 @@ class SemanticRGBDMapping(RGBDMapping):
     """
     pass
 
-  def _compute_proj_resize_feat_map(self, rgb_img, h, w):
+
+  def _proj_resize_feat_map(self, feat_img, h, w):
     """Encodes the RGB image to a feature map, compress if needed, and resize.
     
     Args:
@@ -303,13 +304,12 @@ class SemanticRGBDMapping(RGBDMapping):
       h: desired final height.
       w: desired final width.
     """
-    feat_img = self.encoder.encode_image_to_feat_map(rgb_img)
     B, FC, FH, FW = feat_img.shape
 
     if self.feat_compressor is not None:
       if not self.feat_compressor.is_fitted():
         self.feat_compressor.fit(feat_img.permute(0, 2, 3, 1))
-      
+
       feat_img = self.feat_compressor.compress(feat_img.permute(0, 2, 3, 1))
       feat_img = feat_img.permute(0, 3, 1, 2)
 

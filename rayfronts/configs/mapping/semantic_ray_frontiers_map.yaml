@@ -53,6 +53,13 @@ occ_pruning_period: 8
 # Tolerance when consolidating voxels into bigger ones.
 occ_pruning_tolerance: 2
 
+# How often do we prune semantic voxels to reflect occupancy (That is erase
+# semantic voxels that are no longer occupied). Set to -1 to disable.
+sem_pruning_period: 8
+
+# Voxels with log-odds occupancy <= this value are removed.
+sem_pruning_thresh: 0
+
 ## Frontier calculation
 
 # 3D neighborhood radius to compute if a voxel is a frontier or not

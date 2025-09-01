@@ -153,7 +153,8 @@ class SemanticVoxelMap(SemanticRGBDMapping):
                          rgb_img: torch.FloatTensor,
                          depth_img: torch.FloatTensor,
                          pose_4x4: torch.FloatTensor,
-                         conf_map: torch.FloatTensor = None) -> dict:
+                         conf_map: torch.FloatTensor = None,
+                         feat_img: torch.FloatTensor = None) -> dict:
     update_info = dict()
 
     pts_xyz, selected_indices = g3d.depth_to_pointcloud(
@@ -184,7 +185,9 @@ class SemanticVoxelMap(SemanticRGBDMapping):
 
     N = pts_rgb.shape[0]
     if self.encoder is not None:
-      feat_img = self._compute_proj_resize_feat_map(rgb_img, dH, dW)
+      if feat_img is None:
+        feat_img = self.encoder.encode_image_to_feat_map(rgb_img)
+      feat_img = self._proj_resize_feat_map(feat_img, dH, dW)
       update_info["feat_img"] = feat_img
 
       pts_feat = feat_img.permute(0, 2, 3, 1).reshape(-1, feat_img.shape[1])

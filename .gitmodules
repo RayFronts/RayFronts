@@ -1,0 +1,3 @@
+[submodule "rayfronts/image_encoders/trident/external"]
+	path = rayfronts/image_encoders/trident/external
+	url = https://github.com/YuHengsss/Trident.git

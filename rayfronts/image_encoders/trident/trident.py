@@ -118,7 +118,7 @@ class TridentEncoder(LangSpatialImageEncoder):
       all_text_features.append(text_features)
 
     all_text_features = torch.cat(all_text_features, dim=0)
-    return all_text_features
+    return all_text_features.float()
 
   @override
   def encode_prompts(self, prompts: List[str]) -> torch.FloatTensor:
@@ -196,7 +196,7 @@ class TridentEncoder(LangSpatialImageEncoder):
     B = rgb_image.shape[0]
     image_features = image_features.permute(0, 2, 1)
     image_features = image_features.reshape(B, -1, sam_valid_h, sam_valid_w)
-    return image_features
+    return image_features.float()
 
   @override
   def is_compatible_size(self, h: int, w: int):

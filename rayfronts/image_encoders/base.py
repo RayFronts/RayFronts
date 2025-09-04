@@ -32,8 +32,7 @@ class ImageGlobalEncoder(ImageEncoder):
     """Encode rgb image into an image level feature vector
 
     Args:
-      rgb_image: Bx3xHxW float tensor representing an image with dataset mean 
-        and std normalized values.
+      rgb_image: Bx3xHxW float tensor representing an image with values in [0-1]
     Returns:
       BxC float tensor representing global features.
     """
@@ -47,8 +46,7 @@ class ImageSpatialEncoder(ImageEncoder):
     """Encode rgb image into a feature map
 
     Args:
-      rgb_image: Bx3xHxW float tensor representing an image with dataset mean 
-        and std normalized values.
+      rgb_image: Bx3xHxW float tensor representing an image with values in [0-1]
     Returns:
       BxCxH'xW' float tensor representing pixel / patch level features.
     """
@@ -62,8 +60,7 @@ class ImageSpatialGlobalEncoder(ImageSpatialEncoder, ImageGlobalEncoder):
     """Encode rgb image into a feature map and an image level feature vector
     
     Args:
-      rgb_image: Bx3xHxW float tensor representing an image with dataset mean 
-        and std normalized values.
+      rgb_image: Bx3xHxW float tensor representing an image with values in [0-1]
     Returns:
       A tuple of 
       - BxCxH'xW' float tensor representing pixel / patch level features.

@@ -127,18 +127,9 @@ class ScanNetDataset(SemSegDataset):
                                for _, row in self.semseg_label_map.iterrows()}
       self.scannet_to_nyu40[0] = 0
 
-      self._cat_id_to_name = {row["nyu40id"]: row["nyu40class"] 
-                              for _, row in self.semseg_label_map.iterrows()}
-
-  @property
-  @override
-  def num_classes(self):
-    return len(self._cat_id_to_name)
-
-  @property
-  @override
-  def cat_id_to_name(self):
-    return self._cat_id_to_name
+      self._init_semseg_mappings(
+        {row["nyu40id"]: row["nyu40class"]
+         for _, row in self.semseg_label_map.iterrows()})
   
   @override
   def __iter__(self):
@@ -172,7 +163,9 @@ class ScanNetDataset(SemSegDataset):
         img = np.array(PIL.Image.open(self.semseg_paths[f]))
         semseg_img = np.vectorize(self.scannet_to_nyu40.get)(img)
         semseg_img = torch.from_numpy(semseg_img).long().unsqueeze(0)
-        
+        # Translate from ids to indices
+        semseg_img = self._cat_id_to_index[semseg_img]
+
         if (self.rgb_h != semseg_img.shape[-2] or
           self.rgb_w != semseg_img.shape[-1]):
           semseg_img = torch.nn.functional.interpolate(

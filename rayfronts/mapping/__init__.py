@@ -1,7 +1,6 @@
 from rayfronts.mapping.base import RGBDMapping, SemanticRGBDMapping
 from rayfronts.mapping.semantic_point_cloud import SemanticPointCloud
 from rayfronts.mapping.semantic_voxel_map import SemanticVoxelMap
-from rayfronts.mapping.semseg_voxel_map import SemSegVoxelMap
 from rayfronts.mapping.occ_voxel_map import OccupancyVoxelMap
 
 import logging

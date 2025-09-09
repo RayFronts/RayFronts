@@ -2,7 +2,8 @@ from rayfronts.image_encoders.base import (
   ImageEncoder, ImageGlobalEncoder,
   ImageSpatialEncoder, ImageSpatialGlobalEncoder,
   LangImageEncoder, LangGlobalImageEncoder,
-  LangSpatialImageEncoder, LangSpatialGlobalImageEncoder
+  LangSpatialImageEncoder, LangSpatialGlobalImageEncoder,
+  ImageSemSegEncoder
 )
 
 import logging
@@ -11,6 +12,7 @@ logger = logging.getLogger(__name__)
 from rayfronts.image_encoders.radio import RadioEncoder
 from rayfronts.image_encoders.naclip import NACLIPEncoder
 from rayfronts.image_encoders.naradio import NARadioEncoder
+from rayfronts.image_encoders.gt import GTEncoder
 failed_to_import = list()
 try:
   from rayfronts.image_encoders.trident import TridentEncoder
@@ -20,6 +22,11 @@ try:
   from rayfronts.image_encoders.conceptfusion import ConceptFusionEncoder
 except ModuleNotFoundError as e:
   failed_to_import.append("ConceptFusionEncoder")
+
+try:
+  from rayfronts.image_encoders.grounded_sam import GroundedSamSemSegEncoder
+except ModuleNotFoundError as e:
+  failed_to_import.append("GroundedSamSemSegEncoder")
 
 if len(failed_to_import) > 0:
   logger.info("Could not import %s."

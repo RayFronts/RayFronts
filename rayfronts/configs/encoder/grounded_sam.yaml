@@ -1,0 +1,8 @@
+defaults:
+  - base_encoder
+
+_target_: rayfronts.image_encoders.GroundedSamSemSegEncoder
+
+# Set classes to a list of strings. Or set to null to attempt loading from
+# a semseg dataset.
+classes: null

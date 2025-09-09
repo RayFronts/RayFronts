@@ -175,7 +175,7 @@ class NARadioEncoder(LangSpatialGlobalImageEncoder):
   feature spaces.
   """
 
-  def __init__(self, device: str =None,
+  def __init__(self, device: str = None,
                model_version: str = "radio_v2.5-b",
                lang_model: str ="siglip",
                input_resolution: Tuple[int,int] = [512,512],

@@ -441,7 +441,7 @@ class SrchVolEval(SemSegEval):
           ray_orig, ray_dir, ray_preds, layer="predictions/rays")
 
       for i in range(srchvol_mask.shape[0]):
-        cat_name = self.dataset._cat_index_to_cat_name[
+        cat_name = self.dataset._cat_index_to_name[
           srchvol_mask_cls[i].item()].replace(" ", "_")
         self.vis.log_label_pc(
           unobserved_xyz[srchvol_mask[i]],
@@ -451,7 +451,7 @@ class SrchVolEval(SemSegEval):
       s = {x.item() for x in srchvol_mask_cls}
       to_remove = self.prev_ray_preds.difference(s)
       for cls_id in to_remove:
-        cat_name = self.dataset._cat_index_to_cat_name[cls_id].replace(" ", "_")
+        cat_name = self.dataset._cat_index_to_name[cls_id].replace(" ", "_")
         self.vis.log_label_pc(
           torch.empty([0,3]).float(),
           pc_labels = torch.empty([0,1]).long(),
@@ -510,6 +510,8 @@ class SrchVolEval(SemSegEval):
     if "NARadioEncoder" in self.cfg.encoder._target_:
       encoder_kwargs["input_resolution"] = (self.dataset.rgb_h,
                                             self.dataset.rgb_w)
+    if "classes" in self.cfg.encoder:
+      encoder_kwargs["classes"] = self.dataset.cat_index_to_name[1:]
     self.encoder = hydra.utils.instantiate(self.cfg.encoder, **encoder_kwargs)
 
     self.feat_compressor = None

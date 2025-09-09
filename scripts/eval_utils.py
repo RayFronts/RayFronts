@@ -25,64 +25,6 @@ def reset_seed(seed: int):
   torch.backends.cudnn.deterministic = True
   torch.backends.cudnn.benchmark = False
 
-def attach_cls_mapping_to_dataset(dataset: datasets.SemSegDataset,
-                                  white_list: List[str] = None,
-                                  black_list: List[str] = None):
-  """Attaches mappings from category ids to indices/names to the dataset.
-
-  Given a semantic segmentation dataset that has cat_id_to_name mapping ids to
-  names, this function attaches the following mappings to the dataset:
-  - _cat_index_to_cat_id: mapping from category index to category id
-  - _cat_id_to_cat_index: mapping from category id to category index
-  - _cat_index_to_cat_name: mapping from category index to category name
-
-  We differentiate between a category index and a category id. Ids need not be
-  contiguous and are what must be provided by the original dataset. Indices are
-  contiguous indices that can be used to directly index a one hot encoded mask.
-  Note that we always reserve index/id= 0 as the ignore index.
-
-  Args:
-    dataset: The dataset to attach the mappings to.
-    white_list: A list of category names to include. If None, all categories
-      in cat_id_to_name are included. (Cannot be used with black_list)
-    black_list: A list of category names to exclude. If None, all categories 
-      in cat_id_to_name are included. (Cannot be used with white_list)
-  """
-
-  cin = copy.copy(dataset.cat_id_to_name)
-  cin[0] = ""
-  assert white_list is None or len(white_list) == 0 or \
-          black_list is None or len(black_list) == 0, \
-          "Cannot set both white_list and black_list at the same time"
-
-  if white_list is not None and len(white_list) > 0:
-    dataset._cat_index_to_cat_id = torch.tensor(
-      sorted([id for id, name in cin.items()
-              if name in white_list or id==0]),
-              dtype=torch.long, device="cuda")
-  else:
-    if black_list is None:
-      black_list = []
-    dataset._cat_index_to_cat_id = torch.tensor(
-      sorted([id for id, name in cin.items()
-              if name not in black_list]),
-              dtype=torch.long, device="cuda")
-
-  dataset._cat_id_to_cat_index = torch.zeros(
-    max(dataset.cat_id_to_name.keys())+1,
-    dtype=torch.long, device="cuda")
-
-  dataset._cat_id_to_cat_index[dataset._cat_index_to_cat_id] = \
-    torch.arange(len(dataset._cat_index_to_cat_id),
-                 dtype=torch.long, device="cuda")
-
-  num_classes = len(dataset._cat_index_to_cat_id)
-
-  dataset._cat_index_to_cat_name = \
-    [cin[dataset._cat_index_to_cat_id[i].item()]
-     for i in range(num_classes)]
-
-
 def compute_semseg_preds(map_feats: torch.FloatTensor,
                          text_embeds: torch.FloatTensor,
                          prompt_denoising_thresh: float = 0.5,

@@ -186,12 +186,9 @@ class TartanAirDataset(SemSegDataset):
           semseg_info = json.load(f)
       
       obj_class_dict = semseg_info['name_map']
-      # if not self.clean_labels:
-      #   self._cat_id_to_name = {sem_color_dict[id]: obj
-      #                           for obj, id in obj_class_dict.items()}
-      # else:
-      self._cat_id_to_name = {i+1: v for i, v in 
-                              enumerate(sorted(obj_class_dict.keys()))}
+
+      self._init_semseg_mappings(
+        {i+1: v for i, v in enumerate(sorted(obj_class_dict.keys()))})
       self._name_to_cat_id = {v: k for k,v in self._cat_id_to_name.items()}
 
       self._cat_imgid_to_cat_id = torch.zeros(max(sem_color_dict.values()),
@@ -204,16 +201,6 @@ class TartanAirDataset(SemSegDataset):
             self._name_to_cat_id[k]
 
     self._poses_4x4 = torch.stack(self._poses_4x4, dim=0)
-
-  @property
-  @override
-  def num_classes(self):
-    return len(self._cat_id_to_name)
-
-  @property
-  @override
-  def cat_id_to_name(self):
-    return self._cat_id_to_name
 
   def _pose_to_matrix(self, pose):
     tx,ty,tz,qx,qy,qz,qw = pose
@@ -260,7 +247,9 @@ class TartanAirDataset(SemSegDataset):
 
       if self.load_semseg:
         semseg_img = torchvision.io.read_image(self._semseg_paths[f]).long()
-        semseg_img = self._cat_imgid_to_cat_id[semseg_img]
+        # Translate from ids to indices
+        semseg_img = self._cat_id_to_index[self._cat_imgid_to_cat_id[semseg_img]]
+
         if (self.rgb_h != semseg_img.shape[-2] or
           self.rgb_w != semseg_img.shape[-1]):
           semseg_img = torch.nn.functional.interpolate(

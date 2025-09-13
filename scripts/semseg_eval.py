@@ -29,7 +29,7 @@ import eval_utils
 sys.path.insert(
     0, os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 )
-from rayfronts import mapping, geometry3d as g3d, image_encoders
+from rayfronts import mapping, geometry3d as g3d, image_encoders, feat_compressors
 
 logger = logging.getLogger(__name__)
 
@@ -63,6 +63,9 @@ class SemSegEvalConfig:
 
   # Chunk size to compute cos similarity. Reduce if getting OOM error.
   chunk_size: int = 10000
+
+  # Predict and semantically segment 2D feature maps for visualization.
+  vis_2d_semseg: bool = False
 
   # How many frames should pass before eval ? Set to -1 to only eval at the end.
   online_eval_period: int = -1
@@ -206,6 +209,11 @@ class SemSegEval:
 
     names = self.dataset.cat_index_to_name[1:]
     gt_encoder = image_encoders.GTEncoder(classes=names)
+
+    # TODO: Have a better visualizer of class logits.
+    prev_feat_compressor = self.vis.feat_compressor
+    self.vis.feat_compressor = feat_compressors.PcaCompressor(3)
+
     semseg_gt_lifter = mapping.SemanticVoxelMap(
       self.dataset.intrinsics_3x3, None, self.vis,
       max_pts_per_frame=self.cfg.mapping.max_pts_per_frame,
@@ -247,6 +255,8 @@ class SemSegEval:
       semseg_gt_lifter.global_vox_feat, text_embeds,
       0, 0.1, self.cfg.chunk_size)
 
+    self.vis.feat_compressor = prev_feat_compressor
+
     return semseg_gt_xyz, semseg_gt_label
 
   def compute_text_embeds(self):
@@ -276,7 +286,7 @@ class SemSegEval:
 
     return text_embeds
 
-  def mapping_loop(self, mapper):
+  def mapping_loop(self, mapper, text_embeds=None):
     """Loop to compute map features from the dataset. Yields after every frame.
 
     Yields:
@@ -319,6 +329,14 @@ class SemSegEval:
       if self.vis is not None:
         if i % self.cfg.vis.input_period == 0:
           mapper.vis_update(**r)
+          if self.cfg.vis_2d_semseg:
+            B, C, H, W = r["feat_img"].shape
+            flat_feat_img = r["feat_img"].permute(0, 2, 3, 1).reshape(-1, C)
+            semseg_img = eval_utils.compute_semseg_preds(
+              flat_feat_img, text_embeds,
+              self.cfg.prompt_denoising_thresh,
+              self.cfg.prediction_thresh, self.cfg.chunk_size)
+            self.vis.log_label_img(semseg_img.reshape(B, H, W), layer="img_pred")
         if i % self.cfg.vis.map_period == 0:
           mapper.vis_map()
 
@@ -643,7 +661,7 @@ class SemSegEval:
         self.cfg.mapping, encoder=self.encoder,
         intrinsics_3x3=self.dataset.intrinsics_3x3, visualizer=self.vis,
         feat_compressor=self.feat_compressor)
-      for feats_xyz, feats_feats in self.mapping_loop(mapper):
+      for feats_xyz, feats_feats in self.mapping_loop(mapper, text_embeds):
         if (i != 0 and self.cfg.online_eval_period > 0 and
             i % self.cfg.online_eval_period == 0):
           results_dict[i] = self.predict_and_semseg_eval(

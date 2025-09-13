@@ -1,0 +1,15 @@
+defaults:
+  - base_encoder
+  - /encoder@encoder: naradio
+
+_target_: rayfronts.image_encoders.SemSegWrapEncoder
+
+predict: False
+prompt_denoising_thresh: 0.5
+prediction_thresh: 0.1
+
+text_query_mode: ${querying.text_query_mode}
+compute_prob: ${querying.compute_prob}
+interp_mode: ${interp_mode}
+
+classes:

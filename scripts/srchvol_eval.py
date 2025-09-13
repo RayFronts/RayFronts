@@ -540,7 +540,7 @@ class SrchVolEval(SemSegEval):
       intrinsics_3x3=self.dataset.intrinsics_3x3, visualizer=self.vis,
       occ_pruning_period=-1, clip_bbox=bbox,
       feat_compressor=self.feat_compressor)
-    for _, _ in self.mapping_loop(mapper):
+    for _, _ in self.mapping_loop(mapper, text_embeds):
       if (i != 0 and i % self.cfg.online_eval_period == 0):
         results_dict[i] = self.srchvol_eval(mapper,
           semseg_gt_xyz, semseg_gt_label, occ_gt_xyz, text_embeds)

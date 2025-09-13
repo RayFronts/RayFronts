@@ -13,6 +13,7 @@ from rayfronts.image_encoders.radio import RadioEncoder
 from rayfronts.image_encoders.naclip import NACLIPEncoder
 from rayfronts.image_encoders.naradio import NARadioEncoder
 from rayfronts.image_encoders.gt import GTEncoder
+from rayfronts.image_encoders.semseg_wrap import SemSegWrapEncoder
 failed_to_import = list()
 try:
   from rayfronts.image_encoders.trident import TridentEncoder

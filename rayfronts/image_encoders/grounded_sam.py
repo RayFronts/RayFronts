@@ -65,7 +65,7 @@ class GroundedSamSemSegEncoder(ImageSemSegEncoder):
   def cat_name_to_index(self):
     return self._cat_name_to_index
 
-  
+
   def _gdino_uncombine(self,
                        masks: torch.BoolTensor,
                        text_labels: List[str]
@@ -76,12 +76,12 @@ class GroundedSamSemSegEncoder(ImageSemSegEncoder):
       masks: Nx3xHxW booleant tensor.
       text_labels: List[str] of length N.
     Returns:
-      Tuple of (masks, class indices) uncombined.
+      Tuple of (mask_indices, class indices) uncombined.
     """
-    masks_uncombined = list()
     indices_uncombined = list()
     mask_indices = list()
     for i, tl in enumerate(text_labels):
+      # TODO: This is not perfect but its what the example shows.
       for p in self.prompts:
         if p in tl.split(" "):
           cls_i = self.cat_name_to_index[p]
@@ -90,15 +90,17 @@ class GroundedSamSemSegEncoder(ImageSemSegEncoder):
 
     indices_uncombined = torch.tensor(indices_uncombined,
                                       dtype=torch.long, device=self.device)
-    masks_uncombined = masks[torch.tensor(mask_indices,
-                             dtype=torch.long, device=self.device)]
-    return masks_uncombined, indices_uncombined
+    mask_indices = torch.tensor(mask_indices, 
+                                dtype=torch.long, device=self.device)
+    return mask_indices, indices_uncombined
 
   @override
   def encode_image_to_feat_map(
     self, rgb_image: torch.FloatTensor) -> torch.FloatTensor:
     B, C, H, W = rgb_image.shape
 
+    feat_map = torch.full((B, self.num_classes, H, W), self.eps,
+                           dtype=torch.float, device=self.device)
     # GDino is limited in how many images it can prompt at once.
     num_prompt_chunks = math.ceil(len(self.prompts)/self.prompt_chunk_size)
     n = self.prompt_chunk_size
@@ -129,7 +131,10 @@ class GroundedSamSemSegEncoder(ImageSemSegEncoder):
         detections[b]["text_labels"].extend(all_dets[i][b]["text_labels"])
 
     input_boxes = [detections[i]["boxes"].cpu().tolist()
-                   for i in range(len(detections))]
+                   for i in range(len(detections))
+                   if len(detections[i]["boxes"]) > 0]
+    if len(input_boxes) == 0:
+      return feat_map
     inputs = self.seg_processor(
       images=rgb_image, input_boxes=input_boxes,
       return_tensors="pt").to(self.device)
@@ -139,13 +144,19 @@ class GroundedSamSemSegEncoder(ImageSemSegEncoder):
       original_sizes=inputs.original_sizes,
       reshaped_input_sizes=inputs.reshaped_input_sizes
     )
-    feat_map = torch.full((B, self.num_classes, H, W), self.eps,
-                          dtype=torch.float, device=self.device)
     for i in range(len(masks)):
-      cur_masks, class_indices = self._gdino_uncombine(
+      if len(masks[i]) == 0:
+        continue
+      cmi, class_indices = self._gdino_uncombine(
         masks[i], detections[i]["text_labels"])
+      if len(class_indices) == 0:
+        continue
+      cur_masks = masks[i][cmi].float()
+      feat_map[i, class_indices] += torch.sum(
+        cur_masks *
+        sam_outputs["iou_scores"][i][cmi].unsqueeze(-1).unsqueeze(-1),
+        dim=1) * detections[i]["scores"][cmi].unsqueeze(-1).unsqueeze(-1)
 
-      feat_map[i, class_indices] += torch.sum(cur_masks.float(), dim=1)
       assert class_indices.min() > 0
     return feat_map
 

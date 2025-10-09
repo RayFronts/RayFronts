@@ -73,7 +73,7 @@
 For a minimal setup without ROS and without openvdb you can create a python environment with the [environment.yml](environment.yml) conda specification (Installing it one shot doesn't work usually and you may need to start with a pytorch enabled environment and install the rest of the dependencies with pip). This won't allow you to run the full RayFronts mapping however since it requires OpenVDB.
 
 For a full local installation:
-1. (Optional) Install ros2-humble in a conda/mamba environment using [these instructions](https://robostack.github.io/GettingStarted.html)
+1. (Optional) Install ros2-jazzy in a conda/mamba environment using [these instructions](https://robostack.github.io/GettingStarted.html)
 2. Install pytorch 2.4 with cuda 12.1
     ```
     conda install pytorch==2.4.1 torchvision==0.19.1 torchaudio==2.4.1 -c pytorch
@@ -81,19 +81,20 @@ For a full local installation:
 3. Install remaining packages in environment.yml
 4. Clone the [patched OpenVDB](https://github.com/OasisArtisan/openvdb), build and install in your conda environment.
     ```
-    apt-get install -y libboost-iostreams-dev libtbb-dev libblosc-dev
+    sudo apt install -y libboost-iostreams-dev libtbb-dev libblosc-dev
 
-    git clone https://github.com/OasisArtisan/openvdb && mkdir openvdb/build && cd openvdb/build
+    git clone https://github.com/OasisArtisan/openvdb && cd openvdb
 
-    cmake -DCMAKE_INSTALL_PREFIX=$CONDA_PREFIX \
+    cmake -B build \
+    -DCMAKE_INSTALL_PREFIX=$CONDA_PREFIX \
     -DOPENVDB_BUILD_PYTHON_MODULE=ON \
     -DOPENVDB_BUILD_PYTHON_UNITTESTS=ON \
     -DOPENVDB_PYTHON_WRAP_ALL_GRID_TYPES=ON \
     -DUSE_NUMPY=ON \
-    -Dnanobind_DIR=$CONDA_PREFIX/lib/python3.11/dist-packages/nanobind/cmake ..  
+    -Dnanobind_DIR=$CONDA_PREFIX/lib/python3.12/site-packages/nanobind/cmake
 
-    make -j4
-    make install
+    cmake --build build --config Release -j16
+    cmake --build build --target install
     ```
 5. Build CPP extension by running `CMAKE_INSTALL_PREFIX=$CONDA_PREFIX ./compile.sh`
 

@@ -27,6 +27,10 @@ import torchvision
 import numpy as np
 import hydra
 
+import sys
+sys.path.insert(
+    0, os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+)
 from rayfronts import datasets, visualizers, image_encoders, mapping, utils
 
 logger = logging.getLogger(__name__)

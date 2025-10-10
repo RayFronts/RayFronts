@@ -73,7 +73,10 @@
 For a minimal setup without ROS and without openvdb you can create a python environment with the [environment.yml](environment.yml) conda specification (Installing it one shot doesn't work usually and you may need to start with a pytorch enabled environment and install the rest of the dependencies with pip). This won't allow you to run the full RayFronts mapping however since it requires OpenVDB.
 
 For a full local installation:
-1. (Optional) Install ros2-jazzy in a conda/mamba environment using [these instructions](https://robostack.github.io/GettingStarted.html)
+1. (Optional) Install ros2-jazzy in a conda/mamba environment using [these instructions](https://robostack.github.io/GettingStarted.html):
+    ```bash
+    conda install -c robostack-jazzy ros-jazzy-desktop
+    ```
 2. Install pytorch 2.4 with cuda 12.1
     ```
     conda install pytorch==2.4.1 torchvision==0.19.1 torchaudio==2.4.1 -c pytorch

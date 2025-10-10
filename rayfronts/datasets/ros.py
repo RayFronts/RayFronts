@@ -51,7 +51,7 @@ from rayfronts import geometry3d as g3d
 
 class Ros2Subscriber(PosedRgbdDataset):
   """ROS2 subscriber node to subscribe to posed RGBD topics.
-  
+
   Attributes:
     intrinsics_3x3:  See base.
     rgb_h: See base.
@@ -345,9 +345,9 @@ class Ros2Subscriber(PosedRgbdDataset):
 @deprecated("Use Ros2Subscriber instead")
 class RosnpyDataset(PosedRgbdDataset):
   """Processes datasets produced by the ros2npy utility from scripts dir.
-  
-  The ros2npy utility is located in the scripts directory and it converts ROS 
-  bags to npz files to drop the ros dependency. The format can be quite slow 
+
+  The ros2npy utility is located in the scripts directory and it converts ROS
+  bags to npz files to drop the ros dependency. The format can be quite slow
   since it requires loading huge chunks of memory at a time.
 
   This will be removed in the future and replaced by a ROS1 bag reader or
@@ -371,7 +371,7 @@ class RosnpyDataset(PosedRgbdDataset):
                interp_mode: str = "bilinear"):
     """
     Args:
-      path: Path to directory. if path ends with .npz only a single file is 
+      path: Path to directory. if path ends with .npz only a single file is
         loaded. If the path is a directory then all .npz files within that
         directory will be loaded in lexsorted order assuming that order
         corresponds to the chronological order as well.

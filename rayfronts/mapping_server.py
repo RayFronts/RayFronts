@@ -33,7 +33,7 @@ logger = logging.getLogger(__name__)
 
 class MappingServer:
   """Server performing mapping on a stream of posed RGBD data. Can be queried.
-  
+
   Attributes:
     status: Status enum signaling the current state of the server.
     cfg: Stores the mapping system configuration as is.
@@ -145,9 +145,9 @@ class MappingServer:
   @torch.inference_mode()
   def add_queries(self, queries: List[str]):
     """Adds a list of queries to query the map with at fixed intervals.
-    
+
     Args:
-      queries: List of string where each string is either a text query or a 
+      queries: List of string where each string is either a text query or a
         path to a local image file for image querying.
     """
     if self.encoder is None or not hasattr(self.encoder, "encode_labels"):
@@ -316,7 +316,7 @@ class MappingServer:
       wall_t0 = wall_t1
       logger.info("[#%4d#] Wall (#%6.4f# ms/batch - #%6.2f# frame/s), "
                   "Mapping (#%6.4f# ms/batch - #%6.2f# frame/s), "
-                  "Mapping/Wall (#%6.4f%%)", 
+                  "Mapping/Wall (#%6.4f%%)",
                   i, wall_p*1e3, wall_thr, map_p*1e3, map_thr,
                   map_p/wall_p*100)
 
@@ -331,7 +331,7 @@ class MappingServer:
     if total_map > 0 and total_wall > 0:
       logger.info("Total Wall (#%6.4f# s - #%6.2f# frame/s), "
                   "Total Mapping (#%6.4f# s - #%6.2f# frame/s), "
-                  "Mapping/Wall (#%6.4f%%)", 
+                  "Mapping/Wall (#%6.4f%%)",
                   total_wall, total_frames_processed/total_wall,
                   total_map, total_frames_processed/total_map,
                   total_map/total_wall*100)

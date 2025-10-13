@@ -257,6 +257,9 @@ class Ros2Subscriber(PosedRgbdDataset):
 
       if 'depth' in msgs.keys():
         depth_img = image_to_numpy(msgs["depth"])
+        if depth_img.dtype == np.uint16:
+          # convert from millimetre to metre
+          depth_img = depth_img.astype(float) * 1e-3
         depth_img = torch.tensor(depth_img, dtype=torch.float).unsqueeze(0)
       elif "disp" in msgs.keys():
         # TODO: Why is disparity negative in ros2 zedx and why is max and min

@@ -246,8 +246,16 @@ class Ros2Subscriber(PosedRgbdDataset):
       # Parse RGB
       bgra_img = image_to_numpy(msgs["rgb"]).astype("float") / 255
       bgr_img = bgra_img[..., :3]
-      rgb_img = torch.tensor(bgr_img[..., (2,1,0)],
-                             dtype=torch.float).permute(2, 0, 1)
+      if msgs["rgb"].encoding == "bgr8":
+        # BGR -> RGB
+        rgb_img = torch.tensor(bgr_img[..., (2,1,0)],
+                               dtype=torch.float).permute(2, 0, 1)
+      elif msgs["rgb"].encoding == "rgb8":
+        rgb_img = torch.tensor(bgr_img,
+                               dtype=torch.float).permute(2, 0, 1)
+      else:
+        raise ValueError("unsupported colour format")
+
 
       # Parse Pose
       src_pose_4x4 = torch.tensor(

@@ -38,11 +38,11 @@ try:
   from rclpy.executors import SingleThreadedExecutor
   from rclpy.qos import QoSProfile, ReliabilityPolicy
   import message_filters
-  from sensor_msgs.msg import Image, CameraInfo, PointCloud
+  from sensor_msgs.msg import Image, CompressedImage, CameraInfo, PointCloud
   from geometry_msgs.msg import PoseStamped
   from stereo_msgs.msg import DisparityImage
   from nav_msgs.msg import Odometry
-  from rayfronts.ros_utils import image_to_numpy, pose_to_numpy
+  from rayfronts.ros_utils import image_to_numpy, compressed_image_to_numpy, pose_to_numpy
 except ModuleNotFoundError:
   logger.warning("ROS2 modules not found !")
 
@@ -63,11 +63,13 @@ class Ros2Subscriber(PosedRgbdDataset):
   """
   def __init__(self,
                rgb_topic,
+               rgb_compressed_topic,
                pose_topic,
                rgb_resolution=None,
                depth_resolution=None,
                disparity_topic = None,
                depth_topic = None,
+               depth_compressed_topic = None,
                confidence_topic = None,
                point_cloud_topic = None,
                intrinsics_topic = None,
@@ -88,11 +90,14 @@ class Ros2Subscriber(PosedRgbdDataset):
       rgb_resolution: See base.
       depth_resolution: See base.
       rgb_topic: Topic containing RGB images of type sensor_msgs/msg/Image
+      rgb_compressed_topic: Topic containing compressed RGB images of type sensor_msgs/msg/CompressedImage
       pose_topic: Topic containing poses of type geometry_msgs/msg/PoseStamped
       disparity_topic: Topic containing disparity images of type
         stereo_msgs/DisparityImage.
       depth_topic: Topic containing depth images of type sensor_msgs/msg/Image
         with 32FC1 encoding in metric scale.
+      depth_compressed_topic: Topic containing compressed depth images of type sensor_msgs/msg/CompressedImage
+        with 16UC1 encoding in millimetre.
       confidence_topic: (Optional) Topic containing confidence in depth values.
         Message type: sensor_msgs/msg/Image.
       point_cloud_topic: Topic containing point cloud of type
@@ -140,14 +145,17 @@ class Ros2Subscriber(PosedRgbdDataset):
     # Setup ros node
     msg_str_to_type = OrderedDict(
       rgb = Image,
+      rgb_compressed = CompressedImage,
       pose = PoseStamped,
       disp = DisparityImage,
       depth = Image,
+      depth_compressed = CompressedImage,
       pc = PointCloud,
       conf = Image,
     )
-    self._topics = [rgb_topic, pose_topic, disparity_topic, depth_topic, point_cloud_topic,
-                   confidence_topic]
+    self._topics = [rgb_topic, rgb_compressed_topic, pose_topic, disparity_topic,
+                    depth_topic, depth_compressed_topic, point_cloud_topic,
+                    confidence_topic]
     if not rclpy.ok():
       rclpy.init()
     self._rosnode = Node("rayfronts_input_streamer")
@@ -244,13 +252,20 @@ class Ros2Subscriber(PosedRgbdDataset):
       msgs = dict(zip(self._subs.keys(), msgs))
 
       # Parse RGB
-      bgra_img = image_to_numpy(msgs["rgb"]).astype("float") / 255
-      bgr_img = bgra_img[..., :3]
-      if msgs["rgb"].encoding == "bgr8":
+      encoding = str()
+      if "rgb" in msgs.keys():
+        bgra_img = image_to_numpy(msgs["rgb"])
+        encoding = msgs["rgb"].encoding
+      elif "rgb_compressed" in msgs:
+        bgra_img = compressed_image_to_numpy(msgs["rgb_compressed"])
+        encoding = "bgr8"
+
+      bgr_img = bgra_img[..., :3].astype("float") / 255
+      if encoding == "bgr8":
         # BGR -> RGB
         rgb_img = torch.tensor(bgr_img[..., (2,1,0)],
                                dtype=torch.float).permute(2, 0, 1)
-      elif msgs["rgb"].encoding == "rgb8":
+      elif encoding == "rgb8":
         rgb_img = torch.tensor(bgr_img,
                                dtype=torch.float).permute(2, 0, 1)
       else:
@@ -263,8 +278,11 @@ class Ros2Subscriber(PosedRgbdDataset):
       rdf_pose_4x4 = g3d.transform_pose_4x4(
         src_pose_4x4, self.src2rdf_transform)
 
-      if 'depth' in msgs.keys():
-        depth_img = image_to_numpy(msgs["depth"])
+      if 'depth' in msgs.keys() or 'depth_compressed' in msgs.keys():
+        if 'depth' in msgs.keys():
+          depth_img = image_to_numpy(msgs["depth"])
+        elif 'depth_compressed' in msgs.keys():
+          depth_img = compressed_image_to_numpy(msgs["depth_compressed"])
         if depth_img.dtype == np.uint16:
           # convert from millimetre to metre
           depth_img = depth_img.astype(float) * 1e-3

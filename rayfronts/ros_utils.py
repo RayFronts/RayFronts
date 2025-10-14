@@ -42,6 +42,7 @@ import sys
 import numpy as np
 import array
 from scipy.spatial.transform import Rotation
+import cv2
 
 from sensor_msgs.msg import PointCloud2, PointField, Image
 from geometry_msgs.msg import Vector3, Quaternion, Point, Pose
@@ -120,6 +121,10 @@ def image_to_numpy(msg):
     if channels == 1:
         data = data[...,0]
     return data
+
+def compressed_image_to_numpy(msg_compressed):
+    data = np.frombuffer(msg_compressed.data, np.uint8)
+    return cv2.imdecode(data, cv2.IMREAD_UNCHANGED)
 
 def numpy_to_image(arr, encoding) -> Image:
     if not encoding in name_to_dtypes:

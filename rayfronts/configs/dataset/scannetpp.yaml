@@ -1,0 +1,13 @@
+defaults:
+  - base_dataset
+
+_target_: rayfronts.datasets.ScanNetPPDataset
+
+# Path to the root processed scannet++ directory.
+path: ???
+
+# Name of the scene from scannet++. E.g "bcd2436daf".
+scene_name: bcd2436daf
+
+# Whether to load semantic segmentation labels or not.
+load_semseg: True

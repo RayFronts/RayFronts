@@ -9,6 +9,7 @@ This directory hosts all available data sources.
 - [TartanAirV2](tartanair.py) Reads from [TartanAirV2](https://tartanair.org/) and [TartanGround](https://tartanair.org/tartanground/).
 - [Ros2Subscriber](ros.py): Subscribe to any ros2 topics that provide posed RGBD information.
 - [Rosnpy](ros.py): (Deprecated).
+- [ScanNet++](scannetpp.py): ScanNet++ dataset processed according to instructions mentioned in the official [ScanNet++ repo](https://github.com/scannetpp/scannetpp).
 
 ## Adding a Dataset
 0. Read the [CONTRIBUTING](../../CONTRIBUTING.md) file.

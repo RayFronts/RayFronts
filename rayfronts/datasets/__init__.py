@@ -3,3 +3,4 @@ from rayfronts.datasets.replica import NiceReplicaDataset, SemanticNerfReplicaDa
 from rayfronts.datasets.ros import RosnpyDataset, Ros2Subscriber
 from rayfronts.datasets.scannet import ScanNetDataset
 from rayfronts.datasets.tartanair import TartanAirDataset
+from rayfronts.datasets.scannetpp import ScanNetPPDataset

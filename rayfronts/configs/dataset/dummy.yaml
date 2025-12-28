@@ -1,0 +1,13 @@
+defaults:
+  - base_dataset
+
+_target_: rayfronts.datasets.DummyDataset
+
+# Number of frames to output. Set to -1 to loop indifinitely.
+num_frames: -1
+
+# Variance of depth noise. Set to 0 to disable.
+depth_noise_var: 0
+
+# Horizontal field of view of camera in degrees
+fov: 90

@@ -163,7 +163,7 @@ class Ros2Subscriber(PosedRgbdDataset):
       if t is not None:
         self._subs[msg_str] = message_filters.Subscriber(
           self._rosnode, msg_str_to_type[msg_str], t, qos_profile = 10)
-    self._frame_msgs_queue = queue.Queue()
+    self._frame_msgs_queue = queue.Queue(maxsize=10)
 
     self._time_sync = message_filters.ApproximateTimeSynchronizer(
       list(self._subs.values()), queue_size = 10, slop = 0.01,
@@ -224,6 +224,8 @@ class Ros2Subscriber(PosedRgbdDataset):
 
   def _buffer_frame_msgs(self, *msgs):
     if self.frame_skip <= 0 or self.f % (self.frame_skip+1) == 0:
+      if self._frame_msgs_queue.full():
+        self._frame_msgs_queue.get() # Discard and priortize newer.
       self._frame_msgs_queue.put(msgs)
     self.f += 1
 

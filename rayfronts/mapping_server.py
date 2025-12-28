@@ -93,6 +93,9 @@ class MappingServer:
       if "NARadioEncoder" in cfg.encoder._target_:
         encoder_kwargs["input_resolution"] = [self.dataset.rgb_h,
                                               self.dataset.rgb_w]
+      if (hasattr(self.dataset, "cat_name_to_index") and
+          "classes" in cfg.encoder and cfg.encoder.classes is None):
+        encoder_kwargs["classes"] = self.dataset.cat_index_to_name[1:]
 
       self.encoder = hydra.utils.instantiate(cfg.encoder, **encoder_kwargs)
       mapper_kwargs["encoder"] = self.encoder
@@ -288,6 +291,10 @@ class MappingServer:
         if i % self.cfg.vis.input_period == 0:
           self.vis.log_img(batch["rgb_img"][-1].permute(1,2,0))
           self.vis.log_depth_img(depth_img.cpu()[-1].squeeze())
+          if "confidence_map" in batch.keys():
+            self.vis.log_img(batch["confidence_map"][-1])
+          if "semseg_img" in batch.keys():
+            self.vis.log_label_img(batch["semseg_img"][-1])
 
       map_t0 = time.time()
       r = self.mapper.process_posed_rgbd(rgb_img, depth_img, pose_4x4, **kwargs)

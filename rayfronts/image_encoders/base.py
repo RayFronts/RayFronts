@@ -1,5 +1,5 @@
 import abc
-from typing_extensions import Tuple, List
+from typing_extensions import Tuple, List, override
 import torch
 
 from rayfronts.image_encoders.prompt_templates import openai_imagenet_template
@@ -151,3 +151,66 @@ class LangGlobalImageEncoder(LangImageEncoder, ImageGlobalEncoder):
 class LangSpatialGlobalImageEncoder(LangGlobalImageEncoder,
                                     LangSpatialImageEncoder):
   pass
+
+
+class ImageSemSegEncoder(LangSpatialImageEncoder):
+  """Interface for encoders that are actually semantic segmentors.
+  
+  To avoid rewriting major portions of the codebase. We consider semantic
+  segmentation as simply a onehot encoder but nevertheless still producing a 
+  feature vector that can be aggregated and compared with using cos-sim...etc.
+  Would be more efficient to deal with integers of course but we create this
+  for convenience. This way these "encoders" can be used with existing  mappers.
+  """
+
+  def __init__(self, device = None):
+    super().__init__(device)
+    self.eps = 1e-10
+
+  @property
+  @abc.abstractmethod
+  def num_classes(self) -> int:
+    pass
+
+  @property
+  @abc.abstractmethod
+  def cat_index_to_name(self):
+    """Returns a mapping from category index to category name.
+    
+    cat_index_to_name[cat_index] gives the name of that category index.
+    """
+    pass
+
+  @property
+  @abc.abstractmethod
+  def cat_name_to_index(self):
+    """Returns a mapping from category index to category name.
+    
+    cat_name_to_index[cat_name] gives the one hot index of that category name.
+    """
+    pass
+
+  @override
+  def encode_labels(self, labels: List[str]) -> torch.FloatTensor:
+    """Encodes a list of category names into onehot vectors using stored mapping
+    
+    Args:
+      labels: A list of length T of category names / labels. Ex. ['cat', 'dog']
+    Returns:
+      A TxD float tensor where T represents the number of classes and D 
+      represents the feature space dimension.
+    """
+    onehot = torch.full((len(labels), self.num_classes), self.eps,
+                         dtype=torch.float, device=self.device)
+    for i,c in enumerate(labels):
+      onehot[i, self.cat_name_to_index[c]] = 1
+    return onehot
+
+  @override
+  def encode_prompts(self, prompts: List[str]) -> torch.FloatTensor:
+    """alias for encode_labels"""
+    return self.encode_labels(prompts)
+
+  @override
+  def align_spatial_features_with_language(self, features):
+    return features

@@ -1,7 +1,8 @@
 """Defines abstract base classes for all datasets/datasources."""
 
 import abc
-from typing import Tuple, Union
+from typing import Tuple, Union, List, Hashable, Dict
+import copy
 
 import torch
 
@@ -82,21 +83,49 @@ class PosedRgbdDataset(torch.utils.data.IterableDataset, abc.ABC):
     pass
 
 class SemSegDataset(PosedRgbdDataset, abc.ABC):
-  """Base interface for datasets that provide semantic label images as well."""
+  """Base interface for datasets that provide semantic label images as well.
+  
+  **Implementing classes must call _init_semseg_mappings with cat_id_to_name 
+  mapping to map original dataset ids to a contiguous space.**
+  """
+
+  def __init__(self,
+               rgb_resolution: Union[Tuple[int], int] = None,
+               depth_resolution: Union[Tuple[int], int] = None,
+               frame_skip: int = 0,
+               interp_mode: str = "bilinear"):
+    super().__init__(rgb_resolution=rgb_resolution,
+                     depth_resolution=depth_resolution,
+                     frame_skip=frame_skip,
+                     interp_mode=interp_mode)
+
+    self._cat_id_to_name: Dict = None
+
+    self._cat_index_to_id: torch.LongTensor = None
+    self._cat_id_to_index: torch.LongTensor = None
+
+    self._cat_index_to_name: List = None
+    self._cat_name_to_index: Dict = None
 
   @property
-  @abc.abstractmethod
   def num_classes(self) -> int:
-    pass
+    return len(self._cat_name_to_index)
 
   @property
-  @abc.abstractmethod
-  def cat_id_to_name(self):
-    """Returns a mapping from class id to class name.
+  def cat_index_to_name(self) -> List:
+    """Returns a mapping from category index to category name.
     
-    cat_id_to_name[cat_id] gives the name of that class id.
+    cat_id_to_name[cat_id] gives the name of that category index.
     """
-    pass
+    return self._cat_index_to_name
+
+  @property
+  def cat_name_to_index(self) -> Dict:
+    """Returns a mapping from category name to category index.
+    
+    cat_name_to_index[cat_index] gives the name of that category index.
+    """
+    return self._cat_name_to_index
 
   @abc.abstractmethod
   def __iter__(self):
@@ -105,9 +134,73 @@ class SemSegDataset(PosedRgbdDataset, abc.ABC):
     Returns:
       Returns the same items as PosedRgbdDataset.
       In addition semantic segmentation is returned with key {semseg_img} as
-      a 1xHxW long tensor specifying class ids for each pixel plus the `0` value
+      a 1xHxW long tensor specifying class indices for each pixel
       for no semantic label. The user of the class should be able to get each
-      class id correspondance to the class name through the cat_id_to_name 
+      class id correspondance to the class name through the cat_index_to_name 
       property
     """
     pass
+
+
+  def _init_semseg_mappings(self,
+                            cat_id_to_name: Dict[int, str],
+                            white_list: List[str] = None,
+                            black_list: List[str] = None):
+    """Computes mapping from ids (original pixel labels) to contiguous indices.
+
+    This function initializes the following mappings to the dataset:
+    - _cat_id_to_name: Dict mapping from category id to category name (arg copy)
+    - _cat_index_to_id: Tensor mapping category index to category id
+    - _cat_id_to_index: Tensor mapping from category id to category index
+    - _cat_index_to_name: List mapping category index to category name
+    - _cat_name_to_index: Dict mapping category name to category index. 
+
+    We differentiate between a category index and a category id. Ids need not be
+    contiguous and must be provided by the original dataset. Indices are
+    contiguous indices to be used to directly index a one hot encoded mask.
+    Note that we always reserve index/id= 0 as the ignore index.
+
+    Args:
+      cat_id_to_name: Dictionary mapping an id to name.
+      white_list: A list of category names to include. If None, all categories
+        in cat_id_to_name are included. (Cannot be used with black_list)
+      black_list: A list of category names to exclude. If None, all categories 
+        in cat_id_to_name are included. (Cannot be used with white_list)
+    """
+    assert isinstance(cat_id_to_name, dict)
+    self._cat_id_to_name = cat_id_to_name
+    cin = copy.copy(cat_id_to_name)
+    cin[0] = ""
+    assert white_list is None or len(white_list) == 0 or \
+          black_list is None or len(black_list) == 0, \
+          "Cannot set both white_list and black_list at the same time"
+
+    if white_list is not None and len(white_list) > 0:
+      self._cat_index_to_id = torch.tensor(
+        sorted([id for id, name in cin.items()
+                if name in white_list or id==0]),
+                dtype=torch.long, device="cuda")
+    else:
+      if black_list is None:
+        black_list = []
+      self._cat_index_to_id = torch.tensor(
+        sorted([id for id, name in cin.items()
+                if name not in black_list]),
+                dtype=torch.long, device="cuda")
+
+    self._cat_id_to_index = torch.zeros(
+      max(cat_id_to_name.keys())+1,
+      dtype=torch.long, device="cuda")
+
+    self._cat_id_to_index[self._cat_index_to_id] = \
+      torch.arange(len(self._cat_index_to_id),
+                  dtype=torch.long, device="cuda")
+
+    num_classes = len(self._cat_index_to_id)
+
+    self._cat_index_to_name = \
+      [cin[self._cat_index_to_id[i].item()]
+      for i in range(num_classes)]
+
+    self._cat_name_to_index = {n: i for i, n in
+                               enumerate(self._cat_index_to_name)}

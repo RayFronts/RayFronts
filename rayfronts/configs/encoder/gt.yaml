@@ -1,0 +1,6 @@
+defaults:
+  - base_encoder
+
+_target_: rayfronts.image_encoders.GTEncoder
+
+classes:

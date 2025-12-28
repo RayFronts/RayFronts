@@ -29,7 +29,7 @@ import eval_utils
 sys.path.insert(
     0, os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 )
-from rayfronts import mapping, utils, geometry3d as g3d, datasets
+from rayfronts import mapping, geometry3d as g3d, image_encoders, feat_compressors
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +64,9 @@ class SemSegEvalConfig:
   # Chunk size to compute cos similarity. Reduce if getting OOM error.
   chunk_size: int = 10000
 
+  # Predict and semantically segment 2D feature maps for visualization.
+  vis_2d_semseg: bool = False
+
   # How many frames should pass before eval ? Set to -1 to only eval at the end.
   online_eval_period: int = -1
 
@@ -94,13 +97,14 @@ class SemSegEval:
 
     self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    # Init dataset and remap classes
+    # Init dataset and remap classes with white and black lists
     self.dataset = hydra.utils.instantiate(cfg.dataset)
 
-    eval_utils.attach_cls_mapping_to_dataset(
-      self.dataset, cfg.classes_to_eval, cfg.classes_to_ignore)
-    logger.info(self.dataset._cat_index_to_cat_name)
-    self.num_classes = len(self.dataset._cat_index_to_cat_id)
+    self.dataset._init_semseg_mappings(
+      self.dataset._cat_id_to_name, cfg.classes_to_eval, cfg.classes_to_ignore)
+
+    logger.info(self.dataset._cat_index_to_name)
+    self.num_classes = len(self.dataset._cat_index_to_id)
 
     # Init the visualizer
     intrinsics_3x3 = self.dataset.intrinsics_3x3
@@ -119,7 +123,7 @@ class SemSegEval:
                                          device=self.device)
       rr.log("/", rr.AnnotationContext(
         rr.AnnotationInfo(id=x, label=y) for x,y
-        in enumerate(self.dataset._cat_index_to_cat_name)
+        in enumerate(self.dataset._cat_index_to_name)
       ))
 
     self.dataloader = torch.utils.data.DataLoader(
@@ -189,7 +193,7 @@ class SemSegEval:
     gt_xyz = d["semseg_gt_xyz"].to(self.device)
     gt_label = d["semseg_gt_label"].to(self.device)
     gt_label[gt_label < 0] = 0
-    gt_label = self.dataset._cat_id_to_cat_index[gt_label]
+    gt_label = self.dataset._cat_id_to_index[gt_label]
     gt_onehot = torch.nn.functional.one_hot(gt_label, self.num_classes)
     gt_xyz, gt_onehot = g3d.pointcloud_to_sparse_voxels(
       gt_xyz, self.cfg.mapping.vox_size, gt_onehot, aggregation="sum")
@@ -202,12 +206,20 @@ class SemSegEval:
       semseg_gt_xyz: (Nx3) float tensor representing the voxel centers.
       semseg_gt_label: (N) long tensor representing class indices.
     """
-    semseg_gt_lifter = mapping.SemSegVoxelMap(
-      self.dataset.intrinsics_3x3, None, self.vis,
 
-    max_pts_per_frame=self.cfg.mapping.max_pts_per_frame,
-    vox_size=self.cfg.mapping.vox_size,
-    vox_accum_period=self.cfg.mapping.vox_accum_period)
+    names = self.dataset.cat_index_to_name[1:]
+    gt_encoder = image_encoders.GTEncoder(classes=names)
+
+    # TODO: Have a better visualizer of class logits.
+    prev_feat_compressor = self.vis.feat_compressor
+    self.vis.feat_compressor = feat_compressors.PcaCompressor(3)
+
+    semseg_gt_lifter = mapping.SemanticVoxelMap(
+      self.dataset.intrinsics_3x3, None, self.vis,
+      max_pts_per_frame=self.cfg.mapping.max_pts_per_frame,
+      vox_size=self.cfg.mapping.vox_size,
+      vox_accum_period=self.cfg.mapping.vox_accum_period,
+      encoder=gt_encoder)
 
     logger.info("Lifting 2D ground truth to 3D voxels...")
     for i, batch in enumerate(self.dataloader):
@@ -223,14 +235,13 @@ class SemSegEval:
           self.vis.log_depth_img(batch["depth_img"][-1].squeeze())
           self.vis.log_label_img(batch["semseg_img"][-1].squeeze())
 
-      # Translate ids in semseg img to our indices
-      semseg_img = self.dataset._cat_id_to_cat_index[semseg_img]
+      # Convert to onehot encoded
       semseg_onehot = torch.nn.functional.one_hot(
         semseg_img, self.num_classes)
       semseg_onehot = semseg_onehot.squeeze(1).permute(0, 3, 1, 2)
 
       semseg_gt_lifter.process_posed_rgbd(
-        rgb_img, depth_img, pose_4x4, semseg_img=semseg_onehot)
+        rgb_img, depth_img, pose_4x4, feat_img=semseg_onehot.float())
 
       if self.vis is not None:
         if i % self.cfg.vis.map_period == 0:
@@ -238,9 +249,13 @@ class SemSegEval:
 
         self.vis.step()
 
+    text_embeds = gt_encoder.encode_labels(names)
     semseg_gt_xyz = semseg_gt_lifter.global_vox_xyz
-    semseg_gt_label = torch.argmax(
-      semseg_gt_lifter.global_vox_onehot, dim=-1)
+    semseg_gt_label = eval_utils.compute_semseg_preds(
+      semseg_gt_lifter.global_vox_feat, text_embeds,
+      0, 0.1, self.cfg.chunk_size)
+
+    self.vis.feat_compressor = prev_feat_compressor
 
     return semseg_gt_xyz, semseg_gt_label
 
@@ -251,8 +266,7 @@ class SemSegEval:
       embeddings for each category.
     """
     logger.info("Generating text embeddings...")
-    names = [self.dataset.cat_id_to_name[id.item()]
-            for id in self.dataset._cat_index_to_cat_id[1:]]
+    names = self.dataset.cat_index_to_name[1:]
 
     if self.cfg.querying.text_query_mode == "labels":
       text_embeds = self.encoder.encode_labels(names)
@@ -272,7 +286,7 @@ class SemSegEval:
 
     return text_embeds
 
-  def mapping_loop(self, mapper):
+  def mapping_loop(self, mapper, text_embeds=None):
     """Loop to compute map features from the dataset. Yields after every frame.
 
     Yields:
@@ -290,18 +304,39 @@ class SemSegEval:
           torch.isfinite(depth_img),
           depth_img > self.cfg.depth_limit)] = torch.inf
 
+      kwargs = dict()
+      if "confidence_map" in batch.keys():
+        kwargs["conf_map"] = batch["confidence_map"].cuda()
+
+      if "GTEncoder" in self.cfg.encoder._target_:
+        kwargs["feat_img"] = torch.nn.functional.one_hot(
+          batch["semseg_img"].cuda(),
+          self.num_classes).squeeze(1).permute(0, 3, 1, 2).float()
+
       if self.vis is not None:
         if i % self.cfg.vis.pose_period == 0:
           self.vis.log_pose(batch["pose_4x4"][-1])
         if i % self.cfg.vis.input_period == 0:
           self.vis.log_img(batch["rgb_img"][-1].permute(1,2,0))
           self.vis.log_depth_img(depth_img.cpu()[-1].squeeze())
+          if "confidence_map" in batch.keys():
+            self.vis.log_img(batch["confidence_map"][-1])
+          if "semseg_img" in batch.keys():
+            self.vis.log_label_img(batch["semseg_img"][-1])
 
-      r = mapper.process_posed_rgbd(rgb_img, depth_img, pose_4x4)
+      r = mapper.process_posed_rgbd(rgb_img, depth_img, pose_4x4, **kwargs)
 
       if self.vis is not None:
         if i % self.cfg.vis.input_period == 0:
           mapper.vis_update(**r)
+          if self.cfg.vis_2d_semseg:
+            B, C, H, W = r["feat_img"].shape
+            flat_feat_img = r["feat_img"].permute(0, 2, 3, 1).reshape(-1, C)
+            semseg_img = eval_utils.compute_semseg_preds(
+              flat_feat_img, text_embeds,
+              self.cfg.prompt_denoising_thresh,
+              self.cfg.prediction_thresh, self.cfg.chunk_size)
+            self.vis.log_label_img(semseg_img.reshape(B, H, W), layer="img_pred")
         if i % self.cfg.vis.map_period == 0:
           mapper.vis_map()
 
@@ -427,7 +462,7 @@ class SemSegEval:
         rr.log(f"metrics/{prefix}/summary/{met}", rr.Scalar(m[met].item()))
 
       class_wise_metrics = [k for k,v in m.items() if v.dim() > 0]
-      for i, cls in enumerate(self.dataset._cat_index_to_cat_name[1:]):
+      for i, cls in enumerate(self.dataset._cat_index_to_name[1:]):
         cls = cls.replace(" ", "_")
         for met in class_wise_metrics:
           rr.log(f"metrics/{prefix}/classwise/{i+1}_{cls}/{met}",
@@ -470,7 +505,7 @@ class SemSegEval:
     for i in range(self.num_classes-1): # -1 for the ignore class
       fields = [
         str(i+1),
-        str(self.dataset._cat_index_to_cat_name[i+1]),
+        str(self.dataset._cat_index_to_name[i+1]),
       ]
       fields.extend([str(last_m[k][i].item()) for k in class_wise_metrics])
       csv_lines.append(",".join(fields) + "\n")
@@ -543,7 +578,7 @@ class SemSegEval:
 
       results_file_name = os.path.join(
         results_dir,
-        f"{i+1}_{self.dataset._cat_index_to_cat_name[i+1]}.csv")
+        f"{i+1}_{self.dataset._cat_index_to_name[i+1]}.csv")
       with open(results_file_name, "w") as f:
         f.writelines(csv_lines)
 
@@ -589,10 +624,13 @@ class SemSegEval:
     if "NARadioEncoder" in self.cfg.encoder._target_:
       encoder_kwargs["input_resolution"] = (self.dataset.rgb_h,
                                             self.dataset.rgb_w)
+    if "classes" in self.cfg.encoder:
+      encoder_kwargs["classes"] = self.dataset.cat_index_to_name[1:]
     self.encoder = hydra.utils.instantiate(self.cfg.encoder, **encoder_kwargs)
 
     self.feat_compressor = None
-    if self.cfg.mapping.feat_compressor is not None:
+    if ("feat_compressor" in self.cfg.mapping and
+        self.cfg.mapping.feat_compressor is not None):
       self.feat_compressor = hydra.utils.instantiate(
         self.cfg.mapping.feat_compressor)
     
@@ -623,7 +661,7 @@ class SemSegEval:
         self.cfg.mapping, encoder=self.encoder,
         intrinsics_3x3=self.dataset.intrinsics_3x3, visualizer=self.vis,
         feat_compressor=self.feat_compressor)
-      for feats_xyz, feats_feats in self.mapping_loop(mapper):
+      for feats_xyz, feats_feats in self.mapping_loop(mapper, text_embeds):
         if (i != 0 and self.cfg.online_eval_period > 0 and
             i % self.cfg.online_eval_period == 0):
           results_dict[i] = self.predict_and_semseg_eval(

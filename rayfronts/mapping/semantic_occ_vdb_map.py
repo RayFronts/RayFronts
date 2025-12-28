@@ -250,7 +250,6 @@ class SemanticOccVDBMap(SemanticRGBDMapping):
     else:
       pts_rgb = rgb_img
 
-    feat_img = None
     if self.encoder is not None:
       if feat_img is None:
         feat_img = self.encoder.encode_image_to_feat_map(rgb_img)

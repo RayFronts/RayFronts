@@ -175,7 +175,7 @@ class NARadioEncoder(LangSpatialGlobalImageEncoder):
   feature spaces.
   """
 
-  def __init__(self, device: str =None,
+  def __init__(self, device: str = None,
                model_version: str = "radio_v2.5-b",
                lang_model: str ="siglip",
                input_resolution: Tuple[int,int] = [512,512],
@@ -269,7 +269,7 @@ class NARadioEncoder(LangSpatialGlobalImageEncoder):
       text = self.lang_adaptor.tokenizer(prompts).to(self.device)
       text_features = self.lang_adaptor.encode_text(text)
       text_features /= text_features.norm(dim=-1, keepdim=True)
-    return text_features
+    return text_features.float()
 
   @override
   def encode_image_to_vector(
@@ -283,8 +283,7 @@ class NARadioEncoder(LangSpatialGlobalImageEncoder):
 
       if not self.return_radio_features:
         out = self.lang_adaptor.head_mlp(out)
-
-    return out
+    return out.float()
 
   @override
   def encode_image_to_feat_map(
@@ -295,7 +294,7 @@ class NARadioEncoder(LangSpatialGlobalImageEncoder):
       out = self.model(rgb_image).features
       if not self.return_radio_features:
         out = self.lang_adaptor.head_mlp(out)
-    return out.permute(0, 2, 1).reshape(B, -1, H_, W_)
+    return out.permute(0, 2, 1).reshape(B, -1, H_, W_).float()
 
   @override
   def encode_image_to_feat_map_and_vector(self, rgb_image: torch.FloatTensor) \
@@ -315,7 +314,7 @@ class NARadioEncoder(LangSpatialGlobalImageEncoder):
         global_vector = self.lang_adaptor.head_mlp(global_vector)
         feat_map = self.lang_adaptor.head_mlp(feat_map)
 
-    return feat_map, global_vector
+    return feat_map.float(), global_vector.float()
 
   @override
   def align_global_features_with_language(self, features: torch.FloatTensor):
@@ -325,7 +324,8 @@ class NARadioEncoder(LangSpatialGlobalImageEncoder):
       return features
     B,C = features.shape
     with torch.autocast("cuda", dtype=torch.float16, enabled=self.amp):
-      return self.lang_adaptor.head_mlp(features)
+      features = self.lang_adaptor.head_mlp(features).float()
+    return features.float()
 
   @override
   def align_spatial_features_with_language(self, features: torch.FloatTensor):
@@ -337,7 +337,7 @@ class NARadioEncoder(LangSpatialGlobalImageEncoder):
     features = features.permute(0, 2, 3, 1).reshape(B, -1, C)
     with torch.autocast("cuda", dtype=torch.float16, enabled=self.amp):
       out = self.lang_adaptor.head_mlp(features)
-    return out.permute(0, 2, 1).reshape(B, -1, H, W)
+    return out.permute(0, 2, 1).reshape(B, -1, H, W).float()
 
   @override
   def is_compatible_size(self, h: int, w: int):

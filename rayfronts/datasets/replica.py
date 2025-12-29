@@ -22,9 +22,12 @@ import PIL
 
 from rayfronts.datasets.base import PosedRgbdDataset, SemSegDataset
 
-class NiceReplicaDataset(PosedRgbdDataset):
+class NiceReplicaDataset(SemSegDataset):
   """Loads from the Replica dataset version processed by Nice-Slam.
   
+  Even though it inherits from SemSegDataset, it does not provide semseg maps,
+  just optionally provides semantic class mappings.
+
   Dataset can be found at:
   https://github.com/cvg/nice-slam/blob/master/scripts/download_replica.sh
 
@@ -132,8 +135,7 @@ class NiceReplicaDataset(PosedRgbdDataset):
         semseg_info = json.load(f)
       self._cat_id_to_name = \
         {item["id"]: item["name"] for item in semseg_info["classes"]}
-      self.cat_id_to_name = self._cat_id_to_name
-      self.num_classes = len(self._cat_id_to_name)
+      self._init_semseg_mappings(self._cat_id_to_name)
 
   @override
   def __iter__(self):

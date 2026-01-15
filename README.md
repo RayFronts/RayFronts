@@ -29,7 +29,7 @@
 <img src="assets/method_teaser.gif">
 
 - 🤖 Guide your robot with semantics within and beyond. RayFronts can be easily deployed as part of your robotics stack as it supports ROS2 inputs for mapping and querying and has robust visualizations.
-- 🖼️ Stop using slow SAM crops + CLIP pipelines. Use our encoder to get dense language aligned features in one forward pass. 
+- 🖼️ Stop using slow SAM crops + CLIP pipelines. Use our encoder to get dense language aligned features in one forward pass.
 - 🚀 Bootstrap your semantic mapping project. Utilize the modular RayFronts mapping codebase with its supported datasets to build your project (Novel encoding, novel mapping, novel feature fusion...etc.) and get results fast.
 - 💬 Reach out or raise an issue if you face any problems !
 ## News/Release
@@ -73,27 +73,34 @@
 For a minimal setup without ROS and without openvdb you can create a python environment with the [environment.yml](environment.yml) conda specification (Installing it one shot doesn't work usually and you may need to start with a pytorch enabled environment and install the rest of the dependencies with pip). This won't allow you to run the full RayFronts mapping however since it requires OpenVDB.
 
 For a full local installation:
-1. (Optional) Install ros2-humble in a conda/mamba environment using [these instructions](https://robostack.github.io/GettingStarted.html)
-2. Install pytorch 2.4 with cuda 12.1
+1. Install packages in environment.yml:
+    ```bash
+    conda env create --file environment.yml
+    ```
+2. (Optional) Install ros2-jazzy in a conda/mamba environment using [these instructions](https://robostack.github.io/GettingStarted.html):
+    ```bash
+    conda install -c robostack-jazzy ros-jazzy-desktop
+    ```
+3. Install pytorch 2.4 with cuda 12.1
     ```
     conda install pytorch==2.4.1 torchvision==0.19.1 torchaudio==2.4.1 -c pytorch
     ```
-3. Install remaining packages in environment.yml
 4. Clone the [patched OpenVDB](https://github.com/OasisArtisan/openvdb), build and install in your conda environment.
     ```
-    apt-get install -y libboost-iostreams-dev libtbb-dev libblosc-dev
+    sudo apt install -y libboost-iostreams-dev libtbb-dev libblosc-dev
 
-    git clone https://github.com/OasisArtisan/openvdb && mkdir openvdb/build && cd openvdb/build
+    git clone https://github.com/OasisArtisan/openvdb && cd openvdb
 
-    cmake -DCMAKE_INSTALL_PREFIX=$CONDA_PREFIX \
+    cmake -B build \
+    -DCMAKE_INSTALL_PREFIX=$CONDA_PREFIX \
     -DOPENVDB_BUILD_PYTHON_MODULE=ON \
     -DOPENVDB_BUILD_PYTHON_UNITTESTS=ON \
     -DOPENVDB_PYTHON_WRAP_ALL_GRID_TYPES=ON \
     -DUSE_NUMPY=ON \
-    -Dnanobind_DIR=$CONDA_PREFIX/lib/python3.11/dist-packages/nanobind/cmake ..  
+    -Dnanobind_DIR=$CONDA_PREFIX/lib/python3.12/site-packages/nanobind/cmake
 
-    make -j4
-    make install
+    cmake --build build --config Release -j16
+    cmake --build build --target install
     ```
 5. Build CPP extension by running `CMAKE_INSTALL_PREFIX=$CONDA_PREFIX ./compile.sh`
 
@@ -150,11 +157,11 @@ Note that AUC values are computed after the initial results are computed. Use [s
 If you find this repository useful, please consider giving a star and citation:
 
     @misc{alama2025rayfrontsopensetsemanticray,
-          title={RayFronts: Open-Set Semantic Ray Frontiers for Online Scene Understanding and Exploration}, 
+          title={RayFronts: Open-Set Semantic Ray Frontiers for Online Scene Understanding and Exploration},
           author={Omar Alama and Avigyan Bhattacharya and Haoyang He and Seungchan Kim and Yuheng Qiu and Wenshan Wang and Cherie Ho and Nikhil Keetha and Sebastian Scherer},
           year={2025},
           eprint={2504.06994},
           archivePrefix={arXiv},
           primaryClass={cs.RO},
-          url={https://arxiv.org/abs/2504.06994}, 
+          url={https://arxiv.org/abs/2504.06994},
     }

@@ -152,7 +152,7 @@ If you find this repository useful, please consider giving a star and citation:
 
     @inproceedings{alama2025rayfronts,
           title={RayFronts: Open-Set Semantic Ray Frontiers for Online Scene Understanding and Exploration}, 
-          author={Omar Alama and Avigyan Bhattacharya and Haoyang He and Seungchan Kim and Yuheng Qiu and Wenshan Wang and Cherie Ho and Nikhil Keetha and Sebastian Scherer},
+          author={Alama, Omar and Bhattacharya, Avigyan and He, Haoyang and Kim, Seungchan and Qiu, Yuheng and Wang, Wenshan and Ho, Cherie and Keetha, Nikhil and Scherer, Sebastian},
           booktitle={2025 IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS)},
           pages={5930--5937},
           year={2025}, 

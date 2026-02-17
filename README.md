@@ -150,12 +150,12 @@ Note that AUC values are computed after the initial results are computed. Use [s
 ## Citing RayFronts
 If you find this repository useful, please consider giving a star and citation:
 
-    @misc{alama2025rayfrontsopensetsemanticray,
-          title={RayFronts: Open-Set Semantic Ray Frontiers for Online Scene Understanding and Exploration}, 
-          author={Omar Alama and Avigyan Bhattacharya and Haoyang He and Seungchan Kim and Yuheng Qiu and Wenshan Wang and Cherie Ho and Nikhil Keetha and Sebastian Scherer},
-          year={2025},
-          eprint={2504.06994},
-          archivePrefix={arXiv},
-          primaryClass={cs.RO},
-          url={https://arxiv.org/abs/2504.06994}, 
-    }
+    @inproceedings{alama2025rayfronts,
+      title={RayFronts: Open-set semantic ray frontiers for online scene understanding and exploration},
+      author={Alama, Omar and Bhattacharya, Avigyan and He, Haoyang and Kim, Seungchan and Qiu, Yuheng and Wang, Wenshan and Ho, Cherie and Keetha, Nikhil and Scherer, Sebastian},
+      booktitle={2025 IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS)},
+      pages={5930--5937},
+      year={2025},
+      organization={IEEE}
+   }
+

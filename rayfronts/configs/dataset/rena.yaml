@@ -1,0 +1,63 @@
+defaults:
+  - base_dataset
+
+_target_: rayfronts.datasets.Ros2Subscriber
+
+# Jetson-optimized resolution (reduce for memory savings)
+# Set to null to use original camera resolution
+# RADIO model requires width to be multiple of 16
+rgb_resolution: [240, 416]    # [height, width] - RADIO compatible
+depth_resolution: [240, 416]
+
+# Skip frames to reduce processing load (0 = no skip)
+frame_skip: 0
+
+# Use compressed image transport (recommended for running over network)
+use_compressed_rgb: true
+use_compressed_depth: true
+
+# Topic containing RGB images (CompressedImage when use_compressed_rgb is true)
+rgb_topic: "/base/camera/color/image_raw/compressed"
+
+# Topic containing poses of type nav_msgs/msg/Odometry
+pose_topic: "/Odometry"
+
+# Pose message type: "PoseStamped" or "Odometry"
+pose_msg_type: "Odometry"
+
+# Fixed translation from LiDAR (pose source) to camera in FLU [m]
+# LiDAR is 6cm backward, +0cm left, +4cm up from camera.
+pose_to_camera_translation: [0.06, 0.00, 0.04]
+
+# Topic containing depth images (CompressedImage when use_compressed_depth is true)
+depth_topic: "/base/camera/aligned_depth_to_color/image_raw/compressedDepth"
+
+# RealSense D435 outputs depth in millimeters, convert to meters
+depth_scale: 1000.0
+
+# RealSense D455 practical operating range (meters)
+# Points outside this range are ignored.
+min_depth_m: 0.4
+max_depth_m: 6.0
+
+# Topic containing intrinsics information from messages
+# of type sensor_msgs/msg/CameraInfo. Will be used at initialization only.
+intrinsics_topic: "/base/camera/aligned_depth_to_color/camera_info"
+
+# Path to json file containing intrinsics with the following keys
+# fx, fy, cx, cy, w, h. This will be prioritized over the intrinsics topic.
+intrinsics_file: null
+
+# (Optional) Topic containing confidence in depth values.
+# Message type: sensor_msgs/msg/Image.
+confidence_topic: null
+
+# Topic containing point cloud of type sensor_msgs/msg/PointCloud.
+# this is an alternative inefficient depth source to disparity.
+point_cloud_topic: null
+
+# A string of 3 letters describing the ODOMETRY/WORLD coordinate system
+# r/l u/d f/b in any order. (e.g, rdf, flu, rfu)
+# Your odometry uses FLU (Forward-Left-Up) - Z near 0 when level
+src_coord_system: "flu"
+

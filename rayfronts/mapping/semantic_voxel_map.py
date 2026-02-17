@@ -16,8 +16,11 @@ Typical usage example:
   map.save("test.pt")
 """
 from typing_extensions import override, List, Dict, Tuple
+import logging
 
 import torch
+
+logger = logging.getLogger(__name__)
 
 from rayfronts.mapping.base import SemanticRGBDMapping
 from rayfronts import (geometry3d as g3d, image_encoders, visualizers,
@@ -148,6 +151,39 @@ class SemanticVoxelMap(SemanticRGBDMapping):
   def is_empty(self) -> bool:
     return self.global_vox_xyz is None or self.global_vox_xyz.shape[0] == 0
 
+  def memory_usage_mb(self) -> float:
+    """Calculate memory usage of the map in megabytes."""
+    total_bytes = 0
+    if self.global_vox_xyz is not None:
+      total_bytes += self.global_vox_xyz.element_size() * self.global_vox_xyz.numel()
+    if self.global_vox_rgb_feat_conf is not None:
+      total_bytes += self.global_vox_rgb_feat_conf.element_size() * self.global_vox_rgb_feat_conf.numel()
+    # Temporary buffers
+    for t in self._tmp_pc_xyz:
+      total_bytes += t.element_size() * t.numel()
+    for t in self._tmp_pc_rgb_feat_conf:
+      total_bytes += t.element_size() * t.numel()
+    return total_bytes / (1024 * 1024)
+
+  def log_memory_stats(self) -> None:
+    """Log current map statistics and memory usage."""
+    num_voxels = 0 if self.global_vox_xyz is None else self.global_vox_xyz.shape[0]
+    mem_mb = self.memory_usage_mb()
+    
+    # Get GPU memory stats
+    if torch.cuda.is_available():
+      gpu_alloc = torch.cuda.memory_allocated() / (1024**3)
+      gpu_cached = torch.cuda.memory_reserved() / (1024**3)
+      gpu_peak = torch.cuda.max_memory_allocated() / (1024**3)
+      frag_ratio = (1 - gpu_alloc / gpu_cached) * 100 if gpu_cached > 0 else 0
+      logger.info(
+        f"Map: {num_voxels:,} voxels, {mem_mb:.1f} MB | "
+        f"GPU: {gpu_alloc:.1f}GB alloc, {gpu_cached:.1f}GB cached, "
+        f"{gpu_peak:.1f}GB peak, {frag_ratio:.0f}% frag"
+      )
+    else:
+      logger.info(f"Map: {num_voxels:,} voxels, {mem_mb:.1f} MB")
+
   @override
   def process_posed_rgbd(self,
                          rgb_img: torch.FloatTensor,
@@ -206,6 +242,7 @@ class SemanticVoxelMap(SemanticRGBDMapping):
     if self._vox_accum_cnt >= self.vox_accum_period:
       self._vox_accum_cnt = 0
       self.accum_semantic_voxels()
+      self.log_memory_stats()
 
     return update_info
 
@@ -228,9 +265,8 @@ class SemanticVoxelMap(SemanticRGBDMapping):
       vox_rgb_feat_conf[:, -1] = vox_cnts.squeeze()
       self.global_vox_xyz = vox_xyz
       self.global_vox_rgb_feat_conf = vox_rgb_feat_conf
-      return
 
-    if not self.windowing:
+    elif not self.windowing:
       self.global_vox_xyz, self.global_vox_rgb_feat_conf = \
         g3d.add_weighted_sparse_voxels(
           self.global_vox_xyz,
@@ -239,33 +275,41 @@ class SemanticVoxelMap(SemanticRGBDMapping):
           pts_rgb_feat_conf,
           vox_size=self.vox_size
       )
-      return
 
-    # Compute active window/bbox.
-    # TODO: Test if its faster to project boundary points and pose centers
-    # instead of doing min max over all tmp voxels.
-    active_bbox_min = torch.min(pts_xyz, dim=0).values
-    active_bbox_max = torch.max(pts_xyz, dim=0).values
+    else:
+      # Compute active window/bbox.
+      # TODO: Test if its faster to project boundary points and pose centers
+      # instead of doing min max over all tmp voxels.
+      active_bbox_min = torch.min(pts_xyz, dim=0).values
+      active_bbox_max = torch.max(pts_xyz, dim=0).values
 
-    active_bbox_mask = torch.logical_and(
-      torch.all(self.global_vox_xyz >= active_bbox_min, dim=-1),
-      torch.all(self.global_vox_xyz <= active_bbox_max, dim=-1))
+      active_bbox_mask = torch.logical_and(
+        torch.all(self.global_vox_xyz >= active_bbox_min, dim=-1),
+        torch.all(self.global_vox_xyz <= active_bbox_max, dim=-1))
 
-    global_vox_xyz_update, global_vox_rgb_feat_conf_update = \
-      g3d.add_weighted_sparse_voxels(
-        self.global_vox_xyz[active_bbox_mask],
-        self.global_vox_rgb_feat_conf[active_bbox_mask],
-        pts_xyz,
-        pts_rgb_feat_conf,
-        vox_size=self.vox_size
-      )
+      global_vox_xyz_update, global_vox_rgb_feat_conf_update = \
+        g3d.add_weighted_sparse_voxels(
+          self.global_vox_xyz[active_bbox_mask],
+          self.global_vox_rgb_feat_conf[active_bbox_mask],
+          pts_xyz,
+          pts_rgb_feat_conf,
+          vox_size=self.vox_size
+        )
 
-    self.global_vox_xyz = torch.cat(
-      [global_vox_xyz_update,
-      self.global_vox_xyz[~active_bbox_mask]], dim=0)
-    self.global_vox_rgb_feat_conf = torch.cat(
-      [global_vox_rgb_feat_conf_update,
-      self.global_vox_rgb_feat_conf[~active_bbox_mask]], dim=0)
+      self.global_vox_xyz = torch.cat(
+        [global_vox_xyz_update,
+        self.global_vox_xyz[~active_bbox_mask]], dim=0)
+      self.global_vox_rgb_feat_conf = torch.cat(
+        [global_vox_rgb_feat_conf_update,
+        self.global_vox_rgb_feat_conf[~active_bbox_mask]], dim=0)
+
+    # Smart cache management: release if heavily fragmented
+    if torch.cuda.is_available():
+      allocated = torch.cuda.memory_allocated()
+      cached = torch.cuda.memory_reserved()
+      if cached > 1e9 and (allocated / cached) < 0.4:
+        torch.cuda.empty_cache()
+        logger.debug("Released fragmented GPU cache")
 
   @override
   def vis_map(self) -> None:
@@ -290,18 +334,28 @@ class SemanticVoxelMap(SemanticRGBDMapping):
                     feat_query: torch.FloatTensor,
                     softmax: bool = False,
                     compressed: bool = True)-> dict:
+    """Query the map with text features.
+    
+    Args:
+      feat_query: Query features (Q x D).
+      softmax: Apply softmax across queries.
+      compressed: Query in compressed feature space.
+    """
     if self.is_empty():
       return
     vox_feat = self.global_vox_feat
+    num_voxels = vox_feat.shape[0]
+    logger.info(f"Query: processing {num_voxels} voxels")
 
     if self.feat_compressor is not None and not compressed:
       vox_feat = self.feat_compressor.decompress(vox_feat)
 
-    vox_feat = self.encoder.align_spatial_features_with_language(
+    # Align features with language space
+    vox_feat_aligned = self.encoder.align_spatial_features_with_language(
       vox_feat.unsqueeze(-1).unsqueeze(-1)
     ).squeeze(-1).squeeze(-1)
-
-    r = compute_cos_sim(feat_query, vox_feat, softmax=softmax).T
+    
+    r = compute_cos_sim(feat_query, vox_feat_aligned, softmax=softmax).T
     return dict(vox_xyz=self.global_vox_xyz, vox_sim=r)
 
   @override

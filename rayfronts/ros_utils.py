@@ -121,6 +121,43 @@ def image_to_numpy(msg):
         data = data[...,0]
     return data
 
+def compressed_image_to_numpy(msg):
+    """Decode a sensor_msgs/CompressedImage (JPEG/PNG RGB) to a numpy array.
+
+    Returns:
+        np.ndarray: HxWx3 uint8 array in BGR order (OpenCV convention).
+    """
+    import cv2
+    np_arr = np.frombuffer(msg.data, np.uint8)
+    img = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
+    if img is None:
+        raise ValueError("Failed to decode compressed image")
+    return img
+
+def compressed_depth_to_numpy(msg):
+    """Decode a compressedDepth message (sensor_msgs/CompressedImage) to numpy.
+
+    Handles the variable-length config header prepended by the
+    compressed_depth_image_transport plugin by scanning for the PNG
+    magic bytes (\\x89PNG).
+
+    Returns:
+        np.ndarray: HxW array (16UC1 or 32FC1 depending on source).
+    """
+    import cv2
+    data = bytes(msg.data)
+    png_magic = b'\x89PNG'
+    png_start = data.find(png_magic)
+    if png_start < 0:
+        raise ValueError(
+            "Could not find PNG data in compressedDepth message. "
+            "Make sure the depth topic uses PNG compression.")
+    raw_data = np.frombuffer(data[png_start:], np.uint8)
+    depth_img = cv2.imdecode(raw_data, cv2.IMREAD_UNCHANGED)
+    if depth_img is None:
+        raise ValueError("Failed to decode compressed depth image")
+    return depth_img
+
 def numpy_to_image(arr, encoding) -> Image:
     if not encoding in name_to_dtypes:
         raise TypeError('Unrecognized encoding {}'.format(encoding))

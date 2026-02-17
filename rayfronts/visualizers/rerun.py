@@ -9,6 +9,7 @@ Typical usage:
 from typing_extensions import override
 from typing import Tuple
 
+import numpy as np
 import rerun as rr
 import torch
 
@@ -71,7 +72,11 @@ class RerunVis(Mapping3DVisualizer):
               layer: str = "img",
               pose_layer: str = "pose") -> None:
     self._height, self._width, _ = img.shape
-    rr.log(f"{self._base_name}/{pose_layer}/{layer}", rr.Image(img.cpu()))
+    # Convert to uint8 for Rerun compatibility
+    img_np = img.cpu().numpy()
+    img_uint8 = (np.clip(img_np, 0, 1) * 255).astype(np.uint8)
+    img_uint8 = np.ascontiguousarray(img_uint8)
+    rr.log(f"{self._base_name}/{pose_layer}/{layer}", rr.Image(img_uint8))
 
   @override
   def log_depth_img(self,
@@ -79,8 +84,12 @@ class RerunVis(Mapping3DVisualizer):
                     layer: str = "img_depth",
                     pose_layer: str = "pose") -> None:
     self._height, self._width = depth_img.shape
+    # Convert to contiguous numpy array for Rerun compatibility
+    depth_np = depth_img.cpu().numpy()
+    if not depth_np.flags['C_CONTIGUOUS']:
+      depth_np = np.ascontiguousarray(depth_np)
     rr.log(f"{self._base_name}/{pose_layer}/{layer}",
-           rr.DepthImage(depth_img.cpu()))
+           rr.DepthImage(depth_np))
 
   @override
   def log_pose(self,

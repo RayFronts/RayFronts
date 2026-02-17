@@ -4,7 +4,7 @@ defaults:
 _target_: rayfronts.mapping.SemanticVoxelMap
 
 # Length of a side of a voxel in meters.
-vox_size: 0.3
+vox_size: 0.08
 
 # How many points to project per frame. Set to -1 to project all valid depth
 # points.
@@ -13,7 +13,20 @@ max_pts_per_frame: 1000
 # How often do we aggregate voxels into the global representation.
 # Setting to 10, will accumulate point clouds from 10 frames before 
 # voxelization.
-vox_accum_period: 8
+vox_accum_period: 10
+
+# CUDA cache release policy used by SemanticVoxelMap.
+# Release only when reserved memory is above this threshold.
+cache_release_min_reserved_gb: 1.0
+# Release when fragmentation (1 - allocated / reserved) exceeds this percent.
+cache_release_min_frag_percent: 40.0
+# Run cache release check every N voxel accumulation updates.
+cache_release_period: 1
+
+# Limit map to a 20m x 3.5m x 20m bounding box (width x height x depth)
+# Adjust based on your environment. Set to null for unbounded.
+# Format: [[min_x, min_y, min_z], [max_x, max_y, max_z]]
+clip_bbox: [[-10, -3, -10], [10, 0.5, 10]]
 
 feat_compressor: ${oc.select:feat_compressor, null}
 

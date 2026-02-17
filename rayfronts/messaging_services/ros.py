@@ -19,7 +19,9 @@ class Ros2MessagingService(MessagingService):
   def __init__(self,
                text_query_topic,
                text_query_callback = None,
-               gps_topic = None):
+               sync_query_callback = None,
+               gps_topic = None,
+               **kwargs):
     super().__init__()
     self.text_query_topic = text_query_topic
     self.text_query_callback = text_query_callback

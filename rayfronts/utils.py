@@ -45,10 +45,11 @@ def compute_cos_sim(vec1: torch.FloatTensor,
                      f"feature dimension '{C2}'")
   C = C1
 
-  vec1 = vec1 / vec1.norm(dim = -1, keepdim = True)
+  # Clamp norms to avoid NaNs from zero vectors.
+  vec1 = vec1 / vec1.norm(dim = -1, keepdim = True).clamp_min(1e-8)
   vec1 = vec1.reshape(1, N, 1, C)
 
-  vec2 = vec2 / vec2.norm(dim=-1, keepdim = True)
+  vec2 = vec2 / vec2.norm(dim=-1, keepdim = True).clamp_min(1e-8)
   vec2 = vec2.reshape(M, 1, C, 1)
 
   sim = (vec1 @ vec2).reshape(M, N)

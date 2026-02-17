@@ -1,0 +1,3 @@
+_target_: rayfronts.messaging_services.http.HTTPQueryService
+host: "0.0.0.0"
+port: 8080

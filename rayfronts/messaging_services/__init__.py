@@ -1,6 +1,3 @@
 from rayfronts.messaging_services.base import MessagingService
-
-try:
-  from rayfronts.messaging_services.ros import Ros2MessagingService
-except:
-  pass
+from rayfronts.messaging_services.ros import Ros2MessagingService
+from rayfronts.messaging_services.http import HTTPQueryService

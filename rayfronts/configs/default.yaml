@@ -3,6 +3,7 @@ defaults:
   - dataset: "niceslam_replica"
   - mapping: "semantic_voxel_map"
   - encoder: "radseg"
+  - depth_estimator: null
   - vis: "rerun" # Set to null to disable
   - messaging_service: null # Set to null to disable
   - feat_compressor: null # Set to null to disable

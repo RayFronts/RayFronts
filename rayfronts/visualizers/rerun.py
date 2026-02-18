@@ -52,7 +52,7 @@ class RerunVis(Mapping3DVisualizer):
                      global_heat_scale, feat_compressor)
 
     rr.init("semantic_mapping_vis", spawn=True)
-    rr.set_time_seconds("stable_time", 0)
+    rr.set_time("stable_time", duration=0)
     self._base_name = "world"
     rr.log(self._base_name, rr.ViewCoordinates.RDF, static=True)
     rr.log(self._base_name,
@@ -191,4 +191,4 @@ class RerunVis(Mapping3DVisualizer):
   @override
   def step(self):
     super().step()
-    rr.set_time_seconds("stable_time", self.time_step*0.1)
+    rr.set_time("stable_time", duration=self.time_step * 0.1)

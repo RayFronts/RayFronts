@@ -1,0 +1,50 @@
+# Starling 2 Max: RGB + ToF depth over ROS2
+# Requires: voxl-mpa-to-ros2 running on the VOXL 2
+# See https://docs.modalai.com/ros2-installation-voxl2/
+
+defaults:
+  - base_dataset
+
+_target_: rayfronts.datasets.ros.StarlingMaxSubscriber
+
+# ---- Topics ----
+# RGB camera image (Dual IMX412 12MP)
+rgb_topic: "/hires_front_small_color"
+
+# Body pose - use /vvhub_body_wrt_fixed/pose for global frame
+# or /vvhub_body_wrt_local/pose for local frame (depending on config)
+pose_topic: "/vvhub_body_wrt_fixed/pose"
+
+# ---- Depth source (choose ONE) ----
+# Option A: depth image + depth intrinsics
+depth_topic: null            # e.g. "/tof_depth"
+depth_intrinsics_file: null  # JSON with fx, fy, cx, cy, w, h
+# When depth image is uint8: depth_m = (v/255) * depth_max_range (metres)
+depth_max_range: 3.0
+
+# Option B: point cloud (sensor_msgs/PointCloud2 only)
+point_cloud_topic: /tof_pc      # e.g. "/tof_pc"
+# "body" = points in body frame, "sensor" = in ToF local frame
+point_cloud_frame: "sensor"
+
+# ---- Extrinsics (ModalAI extrinsics.conf) ----
+# Path to the ModalAI extrinsics.conf file that defines sensor mounting.
+# T_body_rgb and T_body_depth are derived automatically from this file.
+extrinsics_conf_path: /home/oalama/Desktop/DSTA/RayFronts/calibrations/starmax_bt_extrinsics.conf
+
+# Child frame name in extrinsics.conf for each sensor
+rgb_frame_name: "hires_front"
+depth_frame_name: "tof"
+
+# Body frame convention used in the extrinsics.conf (VOXL / PX4 = FRD)
+extrinsics_coord_system: "frd"
+
+# ---- RGB intrinsics (JSON with fx, fy, cx, cy, w, h) ----
+intrinsics_file: /home/oalama/Desktop/DSTA/RayFronts/calibrations/starmax_bs_hires_intrinsics
+
+# ---- Optional ----
+# ToF confidence map (sensor_msgs/Image)
+confidence_topic: null
+
+# Body frame convention of the ROS pose topic
+src_coord_system: "frd"

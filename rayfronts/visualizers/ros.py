@@ -129,15 +129,20 @@ class Ros2Vis(Mapping3DVisualizer):
       logger.info("Publisher %s/%s initialized.", self.topic_prefix, key)
       return pub
 
+  def _has_subscriber(self, pub) -> bool:
+    """Return True if the publisher has at least one subscriber."""
+    return pub.get_subscription_count() > 0
+
   @override
   def log_img(self,
               img: torch.FloatTensor,
               layer: str = "img",
               pose_layer: str = "pose") -> None:
-    self._height, self._width, _ = img.shape
-
     k = f"{pose_layer}/{layer}"
     pub = self._get_publisher(k, Image)
+    if not self._has_subscriber(pub):
+      return
+    self._height, self._width, _ = img.shape
     ros_img = ros_utils.numpy_to_image(
       (img.cpu().numpy()*255).astype("uint8"), encoding="rgb8")
     pub.publish(ros_img)
@@ -148,6 +153,8 @@ class Ros2Vis(Mapping3DVisualizer):
                layer: str = "pose") -> None:
     k = f"{layer}/pose"
     pub = self._get_publisher(k, PoseStamped)
+    if not self._has_subscriber(pub):
+      return
     ros_pose = PoseStamped()
     pose_4x4 = g3d.transform_pose_4x4(pose_4x4.cpu(),
                                       self._rdf2flu_transform.cpu())
@@ -164,6 +171,8 @@ class Ros2Vis(Mapping3DVisualizer):
     if pc_xyz.shape[0] == 0:
       return
     pub = self._get_publisher(layer, PointCloud2)
+    if not self._has_subscriber(pub):
+      return
     pc_arr = np.recarray(
       (pc_xyz.shape[0],),
       dtype=[("x", np.float32), ("y", np.float32), ("z", np.float32),
@@ -194,6 +203,9 @@ class Ros2Vis(Mapping3DVisualizer):
     N = arr_origins.shape[0]
     if N == 0:
       return
+    pub = self._get_publisher(layer, MarkerArray)
+    if not self._has_subscriber(pub):
+      return
     arr_ends = arr_origins + arr_dirs
     arr_origins = g3d.transform_points(
       arr_origins.to(self.device),
@@ -204,7 +216,6 @@ class Ros2Vis(Mapping3DVisualizer):
 
     if arr_rgb is not None:
       arr_rgb = arr_rgb.cpu().numpy().astype("float")
-    pub = self._get_publisher(layer, MarkerArray)
     marker_array = MarkerArray()
     for i in range(N):
       arrow = Marker()

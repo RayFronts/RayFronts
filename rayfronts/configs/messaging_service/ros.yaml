@@ -1,2 +1,6 @@
 _target_: rayfronts.messaging_services.Ros2MessagingService
 text_query_topic: "mapping/query/text"
+# Optional: only voxels/rays with similarity >= this are published as PointCloud2
+query_publish_threshold: 0.0
+query_results_topic_prefix: "/rayfronts/query_results"
+frame_id: "map"

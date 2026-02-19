@@ -249,6 +249,8 @@ class MappingServer:
             compressed=self.cfg.querying.compressed)
           if self.vis is not None and r is not None:
             self.mapper.vis_query_result(r, vis_labels=v, **kwargs)
+          if r is not None and self.messaging_service is not None:
+            self.messaging_service.publish_query_results(r, query_labels=v)
 
         self._queries_updated = False
       with self._status_lock:

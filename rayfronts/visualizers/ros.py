@@ -36,9 +36,8 @@ from rayfronts import geometry3d as g3d, feat_compressors
 class Ros2Vis(Mapping3DVisualizer):
   """Broadcsasts to ROS2 topics instead of visualizing. 
   
-  Topics can be visualized with RVIZ2, or Rerun (Through the ros2rerun_client in
-  scripts).
-  
+  Topics can be visualized with RVIZ2
+
   Attributes:
     intrinsics_3x3: See base.
     img_size: See base.

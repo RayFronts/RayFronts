@@ -142,12 +142,13 @@ class Ros2MessagingService(MessagingService):
     return name.strip("_") or ""
 
   def _query_topic_suffix(self, q: int, query_labels: list = None) -> str:
-    """Return topic suffix for query index q: '{q}_{label}' or just '{q}'."""
+    """Return topic suffix for query index q: 'q{q}_{label}' or 'q{q}'.
+    Prefix with 'q' so the segment never starts with a digit (ROS 2 topic rules)."""
     if query_labels is not None and q < len(query_labels):
       sanitized = self._sanitize_topic_name(str(query_labels[q]))
       if sanitized:
-        return f"{q}_{sanitized}"
-    return str(q)
+        return f"q{q}_{sanitized}"
+    return f"q{q}"
 
   @override
   def publish_query_results(self, query_results: dict,
@@ -155,7 +156,7 @@ class Ros2MessagingService(MessagingService):
     """Publish voxel and/or ray similarity as PointCloud2 when subscribers exist.
 
     Broadcasts:
-    - Per-query topics: voxel_similarity/{q}_{label} (e.g. 0_dog, 1_cat), one
+    - Per-query topics: voxel_similarity/q{q}_{label} (e.g. q0_dog, q1_cat), one
       PointCloud2 per query with (x, y, z, sim).
     - All-queries topic: voxel_similarity/all, single PointCloud2 with
       (x, y, z, sim_0, sim_1, ...) so each point has one row and one sim per query.

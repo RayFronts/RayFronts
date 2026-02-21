@@ -30,6 +30,7 @@ import numpy as np
 import cv2
 import torch
 from torchvision import transforms
+from torchvision.transforms import v2
 import torch.nn as nn
 
 import os
@@ -108,6 +109,18 @@ class TridentEncoder(LangSpatialImageEncoder):
     elif sam_model_type == 'vit_h':
       self.sam_heads = 16
 
+    mean = [122.771, 116.746, 104.094]
+    std = [68.501, 66.632, 70.323]
+    mean = [m /255.0 for m in mean]
+    std = [s /255.0 for s in std]
+    self.transform = v2.Compose([
+      v2.ToDtype(torch.float32, scale=True),
+      v2.Normalize(
+        mean=mean,
+        std=std,
+      ),
+    ])
+
   @override
   def encode_labels(self, labels: List[str]) -> torch.FloatTensor:
     prompts_per_label = self.insert_labels_into_templates(labels)
@@ -148,6 +161,7 @@ class TridentEncoder(LangSpatialImageEncoder):
   @override
   def encode_image_to_feat_map(
     self, rgb_image: torch.FloatTensor) -> torch.FloatTensor:
+    rgb_image = self.transform(rgb_image)
     stride = self.clip_stride
 
     tmp_img = self.tensor_to_cv2(rgb_image)

@@ -1,0 +1,22 @@
+defaults:
+  - base_encoder
+
+_target_: rayfronts.image_encoders.SAM3SemSegEncoder
+
+# Set classes to a list of strings. Or set to null to attempt loading from
+# a semseg dataset.
+classes: null
+
+# Minimum detection score to keep (0–1).
+confidence_threshold: 0.5
+
+# Path to SAM 3 checkpoint. If null and load_from_hf is true, downloads from
+# Hugging Face (requires access and hf auth).
+checkpoint_path: null
+
+# Whether to load checkpoint from Hugging Face when checkpoint_path is null.
+load_from_hf: true
+
+# Max prompts per model forward. Prompts are processed in chunks of this size
+# to limit GPU memory. Lower = less memory, more forwards (default: 16).
+prompts_per_forward: 16

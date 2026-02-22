@@ -30,6 +30,10 @@ try:
   from rayfronts.image_encoders.grounded_sam import GroundedSamSemSegEncoder
 except ModuleNotFoundError as e:
   failed_to_import.append("GroundedSamSemSegEncoder")
+try:
+  from rayfronts.image_encoders.sam3_encoder import SAM3SemSegEncoder
+except ModuleNotFoundError as e:
+  failed_to_import.append("SAM3SemSegEncoder")
 
 if len(failed_to_import) > 0:
   logger.info("Could not import %s."

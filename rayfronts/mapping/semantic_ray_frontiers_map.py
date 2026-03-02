@@ -923,7 +923,11 @@ class SemanticRayFrontiersMap(SemanticRGBDMapping):
 
     # Vis frontiers
     if self.frontiers is not None and self.frontiers.shape[0] > 0:
-      self.visualizer.log_pc(self.frontiers, layer="frontiers")
+      fronti_rgb = None
+      if self.frontiers_neighbor_cnts is not None:
+        fronti_rgb = self.frontiers_neighbor_cnts / \
+          self.frontiers_neighbor_cnts.max(dim=0).values.clamp(min=1)
+      self.visualizer.log_pc(self.frontiers, fronti_rgb, layer="frontiers")
 
     # Vis rays
     if (self.global_rays_orig_angles is not None and

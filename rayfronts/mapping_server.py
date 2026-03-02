@@ -260,6 +260,22 @@ class MappingServer:
           self._queries_feats = None
           self._queries_labels.clear()
 
+  def _publish_map_pc(self):
+    """Publish mapper point clouds (e.g. frontiers) via the messaging service."""
+    mapper = self.mapper
+    if hasattr(mapper, "frontiers") and mapper.frontiers is not None \
+        and mapper.frontiers.shape[0] > 0:
+      features = None
+      if (hasattr(mapper, "frontiers_neighbor_cnts")
+          and mapper.frontiers_neighbor_cnts is not None):
+        features = {
+          "empty_cnt": mapper.frontiers_neighbor_cnts[:, 0],
+          "unobserved_cnt": mapper.frontiers_neighbor_cnts[:, 1],
+          "occupied_cnt": mapper.frontiers_neighbor_cnts[:, 2],
+        }
+      self.messaging_service.publish_pc(
+          mapper.frontiers, features=features, layer="frontiers")
+
   @torch.inference_mode()
   def run(self):
     total_wall_t0 = time.time()
@@ -337,6 +353,11 @@ class MappingServer:
 
       if self.cfg.querying.period > 0 and i % self.cfg.querying.period == 0:
         self.run_queries()
+
+      if (self.messaging_service is not None
+          and self.cfg.messaging_publish_period > 0
+          and i % self.cfg.messaging_publish_period == 0):
+        self._publish_map_pc()
 
       if self.vis is not None:
         self.vis.step()

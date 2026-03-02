@@ -4,14 +4,13 @@ Subscribes to a text-query topic and optionally publishes query results
 (voxel_similarity, ray_similarity) as sensor_msgs/PointCloud2 on configurable
 topics. Only computes and publishes when there is at least one subscriber.
 
-The messaging service uses a separate prefix (query_results_topic_prefix, e.g.
-/rayfronts/query_results) and reserved key segments (voxel_similarity/...,
-ray_similarity/...) so its topics do not collide with visualizer topics (which
-use keys like voxel_rgb, frontiers, layer/pose, etc. under the vis topic_prefix).
+The messaging service uses its own topic_prefix (e.g. /rayfronts/msg_serv) so
+its topics do not collide with visualizer topics.
 """
 
 import threading
 import logging
+from typing import Dict
 from typing_extensions import override
 
 import numpy as np
@@ -48,7 +47,7 @@ class Ros2MessagingService(MessagingService):
     text_query_topic: See __init__.
     text_query_callback: See __init__.
     query_publish_threshold: See __init__.
-    query_results_topic_prefix: See __init__.
+    topic_prefix: See __init__.
     frame_id: See __init__.
   """
 
@@ -56,7 +55,7 @@ class Ros2MessagingService(MessagingService):
                text_query_topic,
                text_query_callback=None,
                query_publish_threshold: float = 0.0,
-               query_results_topic_prefix: str = "/rayfronts/query_results",
+               topic_prefix: str = "/rayfronts/msg_serv",
                frame_id: str = "map"):
     """
 
@@ -66,20 +65,17 @@ class Ros2MessagingService(MessagingService):
         message. Can be None to ignore queries.
       query_publish_threshold: Only voxels/rays with similarity >= this value
         are included in published PointCloud2. Ignored when no subscriber.
-      query_results_topic_prefix: Prefix for query-result topics (same
-        convention as vis topic_prefix: full topic = prefix + "/" + key).
-        Default /rayfronts/query_results matches vis root /rayfronts. Keys
-        are voxel_similarity/..., ray_similarity/... so they do not collide
-        with visualizer layer names.
+      topic_prefix: Prefix for all published topics. Full topic is
+        prefix + "/" + key.
       frame_id: Frame id set on published PointCloud2 headers.
     """
     super().__init__()
     self.text_query_topic = text_query_topic
     self.text_query_callback = text_query_callback
     self.query_publish_threshold = query_publish_threshold
-    self.query_results_topic_prefix = query_results_topic_prefix
+    self.topic_prefix = topic_prefix
     self.frame_id = frame_id
-    self._query_publishers = dict()
+    self._publishers = dict()
 
     if not rclpy.ok():
       rclpy.init()
@@ -107,23 +103,54 @@ class Ros2MessagingService(MessagingService):
             rclpy.executors.ShutdownException):
       pass
 
-  def _get_query_publisher(self, key: str):
-    """Return the lazy-created PointCloud2 publisher for the given topic key."""
+  def _get_publisher(self, topic: str):
+    """Return the lazy-created PointCloud2 publisher for the given topic."""
     try:
-      return self._query_publishers[key]
+      return self._publishers[topic]
     except KeyError:
       pub = self._rosnode.create_publisher(
-          PointCloud2,
-          f"{self.query_results_topic_prefix}/{key}",
+          PointCloud2, topic,
           QoSProfile(reliability=ReliabilityPolicy.RELIABLE, depth=5))
-      self._query_publishers[key] = pub
-      logger.info("Query results publisher %s/%s initialized.",
-                  self.query_results_topic_prefix, key)
+      self._publishers[topic] = pub
+      logger.info("Publisher %s initialized.", topic)
       return pub
 
   def _has_subscriber(self, pub) -> bool:
     """Return True if the publisher has at least one subscriber."""
     return pub.get_subscription_count() > 0
+
+  @override
+  def publish_pc(self, pc_xyz: torch.FloatTensor,
+                 features: Dict[str, torch.FloatTensor] = None,
+                 layer: str = "pc") -> None:
+    """Publish a point cloud as PointCloud2 (only when there is a subscriber).
+
+    Fields: x, y, z + one field per entry in *features*.
+    """
+    topic = f"{self.topic_prefix}/{layer}"
+    pub = self._get_publisher(topic)
+    if not self._has_subscriber(pub):
+      return
+    n = pc_xyz.shape[0]
+    if n == 0:
+      return
+
+    dtype_list = [("x", np.float32), ("y", np.float32), ("z", np.float32)]
+    if features:
+      for name in features:
+        dtype_list.append((name, np.float32))
+
+    rec = np.recarray((n,), dtype=dtype_list)
+    xyz_np = pc_xyz.cpu().numpy().astype(np.float32)
+    rec["x"] = xyz_np[:, 0]
+    rec["y"] = xyz_np[:, 1]
+    rec["z"] = xyz_np[:, 2]
+    if features:
+      for name, tensor in features.items():
+        rec[name] = tensor.cpu().numpy().astype(np.float32)
+
+    cloud = ros_utils.array_to_pointcloud2(rec, frame_id=self.frame_id)
+    pub.publish(cloud)
 
   def _sanitize_topic_name(self, s: str) -> str:
     """Make a string safe for ROS 2 topic names (alphanumeric and underscore).
@@ -168,14 +195,14 @@ class Ros2MessagingService(MessagingService):
       vox_sim = query_results["vox_sim"]
       num_queries = vox_sim.shape[0]
       # Only convert and publish if at least one voxel topic has a subscriber
-      pub_all = self._get_query_publisher(
-          f"{KEY_VOXEL_SIMILARITY}/{KEY_ALL_QUERIES}")
+      pub_all = self._get_publisher(
+          f"{self.topic_prefix}/{KEY_VOXEL_SIMILARITY}/{KEY_ALL_QUERIES}")
       need_vox = self._has_subscriber(pub_all)
       if not need_vox:
         for q in range(num_queries):
           suffix = self._query_topic_suffix(q, query_labels)
-          if self._has_subscriber(self._get_query_publisher(
-              f"{KEY_VOXEL_SIMILARITY}/{suffix}")):
+          if self._has_subscriber(self._get_publisher(
+              f"{self.topic_prefix}/{KEY_VOXEL_SIMILARITY}/{suffix}")):
             need_vox = True
             break
       if need_vox:
@@ -201,7 +228,7 @@ class Ros2MessagingService(MessagingService):
             pub_all.publish(cloud)
           for q in range(num_queries):
             suffix = self._query_topic_suffix(q, query_labels)
-            pub = self._get_query_publisher(f"{KEY_VOXEL_SIMILARITY}/{suffix}")
+            pub = self._get_publisher(f"{self.topic_prefix}/{KEY_VOXEL_SIMILARITY}/{suffix}")
             if self._has_subscriber(pub):
               rec = np.recarray(
                   (n_filtered,),
@@ -219,14 +246,14 @@ class Ros2MessagingService(MessagingService):
       ray_orig_angles = query_results["ray_orig_angles"]
       ray_sim = query_results["ray_sim"]
       num_queries = ray_sim.shape[0]
-      pub_all = self._get_query_publisher(
-          f"{KEY_RAY_SIMILARITY}/{KEY_ALL_QUERIES}")
+      pub_all = self._get_publisher(
+          f"{self.topic_prefix}/{KEY_RAY_SIMILARITY}/{KEY_ALL_QUERIES}")
       need_ray = self._has_subscriber(pub_all)
       if not need_ray:
         for q in range(num_queries):
           suffix = self._query_topic_suffix(q, query_labels)
-          if self._has_subscriber(self._get_query_publisher(
-              f"{KEY_RAY_SIMILARITY}/{suffix}")):
+          if self._has_subscriber(self._get_publisher(
+              f"{self.topic_prefix}/{KEY_RAY_SIMILARITY}/{suffix}")):
             need_ray = True
             break
       if need_ray:
@@ -256,7 +283,7 @@ class Ros2MessagingService(MessagingService):
             pub_all.publish(cloud)
           for q in range(num_queries):
             suffix = self._query_topic_suffix(q, query_labels)
-            pub = self._get_query_publisher(f"{KEY_RAY_SIMILARITY}/{suffix}")
+            pub = self._get_publisher(f"{self.topic_prefix}/{KEY_RAY_SIMILARITY}/{suffix}")
             if self._has_subscriber(pub):
               rec = np.recarray(
                   (m_filtered,),

@@ -109,6 +109,10 @@ zero_depth_mode: False
 # Whether to infer frontier directions based on occupancy.
 infer_direction: False
 
+# Whether to store per-frontier neighborhood counts (empty, unobserved, occupied)
+# in self.frontiers_neighbor_cnts.
+keep_frontier_neighbor_cnts: False
+
 feat_compressor: ${oc.select:feat_compressor, null}
 
 interp_mode: ${interp_mode}

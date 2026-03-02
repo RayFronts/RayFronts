@@ -89,6 +89,8 @@ class SemanticRayFrontiersMap(SemanticRGBDMapping):
       features, 1 for hit count. This tensor is aligned with
       global_vox_xyz.
     frontiers: (Nx3) Float tensor describing locations of map frontiers.
+    frontiers_neighbor_cnts: (Nx3) Float tensor describing neighborhood counts
+      (empty, unobserved, occupied) per frontier, or None.
     global_rays_orig_angles: Mx(3+2) 3 for origin xyz and 2 for spherical angles
       theta (azimuthal angle in the xy-plane from the x-axis with -pi<=theta<pi)
       and phi (polar/zenith angle from the positive z-axis with 0<=phi<=pi)
@@ -133,7 +135,8 @@ class SemanticRayFrontiersMap(SemanticRGBDMapping):
                ray_tracing: bool = False,
                global_encoding: bool = False,
                zero_depth_mode: bool = False,
-               infer_direction: bool = False):
+               infer_direction: bool = False,
+               keep_frontier_neighbor_cnts: bool = False):
     """
     Args:
       intrinsics_3x3: See base.
@@ -209,6 +212,8 @@ class SemanticRayFrontiersMap(SemanticRGBDMapping):
         or there is no desire for dense voxel mapping. All rays attach to the
         current location.
       infer_direction: Whether to infer frontier directions based on occupancy.
+      keep_frontier_neighbor_cnts: Whether to store per-frontier neighborhood
+        counts (empty, unobserved, occupied) in self.frontiers_neighbor_cnts.
     """
     super().__init__(intrinsics_3x3, device, visualizer, clip_bbox, encoder,
                      feat_compressor, interp_mode)
@@ -249,6 +254,7 @@ class SemanticRayFrontiersMap(SemanticRGBDMapping):
       logger.warning("Setting infer direction to true while not in semantic "
                      "frontier mode may not make sense !")
     self.infer_direction = infer_direction
+    self.keep_frontier_neighbor_cnts = keep_frontier_neighbor_cnts
 
     v = self.vox_size
 
@@ -269,6 +275,8 @@ class SemanticRayFrontiersMap(SemanticRGBDMapping):
 
     # Fx3
     self.frontiers = None
+    # Fx3 (empty_cnt, unobserved_cnt, occupied_cnt) per frontier, or None
+    self.frontiers_neighbor_cnts = None
     # Mx(3+2) 3 for origin and 2 for angle
     self.global_rays_orig_angles = None
     # Mx(C+1) C for features, 1 for count.
@@ -782,26 +790,41 @@ class SemanticRayFrontiersMap(SemanticRGBDMapping):
       min_unobserved = self.fronti_min_unobserved,
       min_empty = self.fronti_min_empty,
       min_occupied = self.fronti_min_occupied,
+      return_cnts = self.keep_frontier_neighbor_cnts,
     ).to(self.device)
 
     # Subsample frontiers using voxel grid
     if self.fronti_subsampling > 1:
+      feat = torch.ones_like(frontiers_update[:, 0:1])
+      if self.keep_frontier_neighbor_cnts:
+        feat = torch.cat([feat, frontiers_update[:, 3:]], dim=-1)
       frontiers_update, cnt = g3d.pointcloud_to_sparse_voxels(
-        frontiers_update, vox_size=self.vox_size*self.fronti_subsampling,
-        feat_pc=torch.ones_like(frontiers_update[:, 0:1]),
-        aggregation="sum")
-      frontiers_update = \
-        frontiers_update[cnt.squeeze(-1) > self.fronti_subsampling_min_fronti]
+        frontiers_update[:, :3], vox_size=self.vox_size*self.fronti_subsampling,
+        feat_pc=feat, aggregation="sum")
+      mask = cnt[:, 0] > self.fronti_subsampling_min_fronti
+      frontiers_update = frontiers_update[mask]
+      cnt = cnt[mask]
+      cnts_update = cnt[:, 1:] / cnt[:, :1] if self.keep_frontier_neighbor_cnts \
+        else None
+    else:
+      cnts_update = frontiers_update[:, 3:] if self.keep_frontier_neighbor_cnts \
+        else None
+      frontiers_update = frontiers_update[:, :3]
 
     # Update global frontiers
     if self.frontiers is None:
       self.frontiers = frontiers_update
+      self.frontiers_neighbor_cnts = cnts_update
     else:
       # Replace old frontiers in active window with updated frontiers
-      self.frontiers = self.frontiers[
-        torch.logical_or(torch.any(self.frontiers < active_bbox_min, dim=-1),
-                          torch.any(self.frontiers > active_bbox_max, dim=-1))]
+      outside_mask = torch.logical_or(
+        torch.any(self.frontiers < active_bbox_min, dim=-1),
+        torch.any(self.frontiers > active_bbox_max, dim=-1))
+      self.frontiers = self.frontiers[outside_mask]
       self.frontiers = torch.cat([self.frontiers, frontiers_update], dim=0)
+      if self.keep_frontier_neighbor_cnts:
+        self.frontiers_neighbor_cnts = torch.cat(
+          [self.frontiers_neighbor_cnts[outside_mask], cnts_update], dim=0)
 
   def compute_inferred_directions(self):
     """Infer frontier directions based on occupancy map."""

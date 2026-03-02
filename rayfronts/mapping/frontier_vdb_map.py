@@ -60,6 +60,9 @@ class FrontierVDBMap(RGBDMapping):
       more information about available functions on the grid can be found below:
       https://www.openvdb.org/documentation/doxygen/classopenvdb_1_1v12__0_1_1Grid.html
     frontiers: (Nx3) Float tensor describing locations of map frontiers.
+    frontiers_neighbor_cnts: (Nx3) Float tensor with per-frontier neighborhood
+      counts (empty_cnt, unobserved_cnt, occupied_cnt). Aligned with frontiers.
+      None when keep_frontier_neighbor_cnts is False.
   """
 
   def __init__(self,
@@ -83,7 +86,8 @@ class FrontierVDBMap(RGBDMapping):
                fronti_min_empty: int = 2,
                fronti_min_occupied: int = 0,
                fronti_subsampling: int = 4,
-               fronti_subsampling_min_fronti: int = 10):
+               fronti_subsampling_min_fronti: int = 10,
+               keep_frontier_neighbor_cnts: bool = False):
     """
     
     Args:
@@ -134,6 +138,8 @@ class FrontierVDBMap(RGBDMapping):
         bigger cells), how many frontiers should lie in the big cell to consider
         it as a frontier. This is heavilly tied to the subsampling factor. Ex. A
         subsampling factor of 4 means 4^3 cells will cluster into one cell.
+      keep_frontier_neighbor_cnts: Whether to store per-frontier neighborhood
+        counts (empty, unobserved, occupied) in self.frontiers_neighbor_cnts.
     """
     super().__init__(intrinsics_3x3, device, visualizer, clip_bbox)
     self.visualizer=visualizer
@@ -159,6 +165,7 @@ class FrontierVDBMap(RGBDMapping):
     self.fronti_min_occupied = fronti_min_occupied
     self.fronti_subsampling = fronti_subsampling
     self.fronti_subsampling_min_fronti = fronti_subsampling_min_fronti
+    self.keep_frontier_neighbor_cnts = keep_frontier_neighbor_cnts
 
     v = self.vox_size
     self.occ_map_vdb = openvdb.Int8Grid()
@@ -168,6 +175,8 @@ class FrontierVDBMap(RGBDMapping):
     self.occ_map_vdb.transform = openvdb.createLinearTransform(voxelSize=v)
 
     self.frontiers = None
+    # Fx3 (empty_cnt, unobserved_cnt, occupied_cnt) per frontier, or None
+    self.frontiers_neighbor_cnts = None
 
     # Temporary separate voxel grid accumulation before aggregation
     self.vox_accum_period = vox_accum_period
@@ -258,7 +267,7 @@ class FrontierVDBMap(RGBDMapping):
 
   def update_frontiers(self, active_bbox_min, active_bbox_max) -> None:
 
-    frontiers_update = rayfronts_cpp.filter_cells_in_bbox(
+    frontiers_update = rayfronts_cpp.parallel_filter_cells_in_bbox(
       self.occ_map_vdb,
       cell_type_to_iterate = rayfronts_cpp.CellType.Empty,
       world_bbox_min = rayfronts_cpp.Vec3d(*active_bbox_min),
@@ -267,26 +276,41 @@ class FrontierVDBMap(RGBDMapping):
       min_unobserved = self.fronti_min_unobserved,
       min_empty = self.fronti_min_empty,
       min_occupied = self.fronti_min_occupied,
+      return_cnts = self.keep_frontier_neighbor_cnts,
     ).to(self.device)
 
     # Subsample frontiers using voxel grid
     if self.fronti_subsampling > 1:
+      feat = torch.ones_like(frontiers_update[:, 0:1])
+      if self.keep_frontier_neighbor_cnts:
+        feat = torch.cat([feat, frontiers_update[:, 3:]], dim=-1)
       frontiers_update, cnt = g3d.pointcloud_to_sparse_voxels(
-        frontiers_update, vox_size=self.vox_size*self.fronti_subsampling,
-        feat_pc=torch.ones_like(frontiers_update[:, 0:1]),
-        aggregation="sum")
-      frontiers_update = \
-        frontiers_update[cnt.squeeze(-1) > self.fronti_subsampling_min_fronti]
+        frontiers_update[:, :3], vox_size=self.vox_size*self.fronti_subsampling,
+        feat_pc=feat, aggregation="sum")
+      mask = cnt[:, 0] > self.fronti_subsampling_min_fronti
+      frontiers_update = frontiers_update[mask]
+      cnt = cnt[mask]
+      cnts_update = cnt[:, 1:] / cnt[:, :1] if self.keep_frontier_neighbor_cnts \
+        else None
+    else:
+      cnts_update = frontiers_update[:, 3:] if self.keep_frontier_neighbor_cnts \
+        else None
+      frontiers_update = frontiers_update[:, :3]
 
     # Update global frontiers
     if self.frontiers is None:
       self.frontiers = frontiers_update
+      self.frontiers_neighbor_cnts = cnts_update
     else:
       # Replace old frontiers in active window with updated frontiers
-      self.frontiers = self.frontiers[
-        torch.logical_or(torch.any(self.frontiers < active_bbox_min, dim=-1),
-                          torch.any(self.frontiers > active_bbox_max, dim=-1))]
+      outside_mask = torch.logical_or(
+        torch.any(self.frontiers < active_bbox_min, dim=-1),
+        torch.any(self.frontiers > active_bbox_max, dim=-1))
+      self.frontiers = self.frontiers[outside_mask]
       self.frontiers = torch.cat([self.frontiers, frontiers_update], dim=0)
+      if self.keep_frontier_neighbor_cnts:
+        self.frontiers_neighbor_cnts = torch.cat(
+          [self.frontiers_neighbor_cnts[outside_mask], cnts_update], dim=0)
 
   @override
   def vis_map(self) -> None:

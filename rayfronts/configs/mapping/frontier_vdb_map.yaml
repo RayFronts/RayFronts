@@ -67,3 +67,7 @@ fronti_subsampling: 4
 # to the subsampling factor. Ex. A subsampling factor of 4 means 4^3 cells will
 # cluster into one cell.
 fronti_subsampling_min_fronti: 10
+
+# Whether to store per-frontier neighborhood counts (empty, unobserved, occupied)
+# in self.frontiers_neighbor_cnts.
+keep_frontier_neighbor_cnts: False

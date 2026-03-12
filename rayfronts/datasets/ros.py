@@ -83,7 +83,9 @@ class Ros2Subscriber(PosedRgbdDataset):
                intrinsics_file = None,
                src_coord_system = "flu",
                frame_skip = 0,
-               interp_mode="bilinear"):
+               interp_mode="bilinear",
+               pose_msg_type: str = "PoseStamped",
+               base_to_camera_extrinsics: dict | None = None):
     """
 
     There can be three sources of depth:
@@ -146,10 +148,28 @@ class Ros2Subscriber(PosedRgbdDataset):
     self.src2rdf_transform = g3d.mat_3x3_to_4x4(
       g3d.get_coord_system_transform(src_coord_system, "rdf"))
 
+    self._pose_msg_type = pose_msg_type
+    self._base_to_camera_extrinsics = base_to_camera_extrinsics
+    self._T_base_to_cam = None
+    if base_to_camera_extrinsics is not None:
+      ex = base_to_camera_extrinsics
+      x = float(ex.get("x", 0))
+      y = float(ex.get("y", 0))
+      z = float(ex.get("z", 0))
+      roll = float(ex.get("roll", 0))
+      pitch = float(ex.get("pitch", 0))
+      yaw = float(ex.get("yaw", 0))
+      rot = Rotation.from_euler("xyz", [roll, pitch, yaw])
+      T_np = np.eye(4, dtype=np.float32)
+      T_np[:3, :3] = rot.as_matrix()
+      T_np[:3, 3] = [x, y, z]
+      self._T_base_to_cam = torch.tensor(T_np, dtype=torch.float)
+
+    pose_type = Odometry if pose_msg_type == "Odometry" else PoseStamped
     # Setup ros node
     msg_str_to_type = OrderedDict(
       rgb = Image,
-      pose = PoseStamped,
+      pose = pose_type,
       disp = DisparityImage,
       depth = Image,
       pc = PointCloud,
@@ -259,8 +279,14 @@ class Ros2Subscriber(PosedRgbdDataset):
                              dtype=torch.float).permute(2, 0, 1)
 
       # Parse Pose
+      if self._pose_msg_type == "Odometry":
+        pose_obj = msgs["pose"].pose.pose  # Odometry.pose.pose -> geometry_msgs/Pose
+      else:
+        pose_obj = msgs["pose"].pose       # PoseStamped.pose -> geometry_msgs/Pose
       src_pose_4x4 = torch.tensor(
-        pose_to_numpy(msgs["pose"].pose), dtype=torch.float)
+        pose_to_numpy(pose_obj), dtype=torch.float)
+      if self._T_base_to_cam is not None:
+        src_pose_4x4 = src_pose_4x4 @ self._T_base_to_cam
       rdf_pose_4x4 = g3d.transform_pose_4x4(
         src_pose_4x4, self.src2rdf_transform)
 

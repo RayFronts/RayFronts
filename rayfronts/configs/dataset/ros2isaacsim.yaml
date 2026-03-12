@@ -1,0 +1,36 @@
+defaults:
+  - base_dataset
+
+_target_: rayfronts.datasets.Ros2Subscriber
+
+# Topic containing RGB images of type sensor_msgs/msg/Image
+rgb_topic: "/robot_1/sensors/front_stereo/left/image_rect"
+# Topic containing odometry of type nav_msgs/msg/Odometry
+pose_topic: "/robot_1/odometry_conversion/odometry"
+# Topic containing depth images of type sensor_msgs/msg/Image
+depth_topic: "/robot_1/sensors/front_stereo/left/depth"
+# Topic containing intrinsics from sensor_msgs/msg/CameraInfo
+intrinsics_topic: "/robot_1/sensors/front_stereo/left/camera_info"
+intrinsics_file: null
+
+pose_msg_type: "Odometry"
+# base_link to camera extrinsics (x,y,z in m, roll,pitch,yaw in rad).
+# Set to null if pose is already in camera frame.
+base_to_camera_extrinsics:
+  # x: 0.0584
+  # y: 0.05994
+  # z: 0.15091
+  # roll: 0.0
+  # pitch: 1.5708
+  # yaw: 0.0
+  x: 0.161
+  y: 0.060
+  z: 0.712
+  roll: 0.0
+  pitch: 0.1745
+  yaw: 0.0
+
+disparity_topic: null
+confidence_topic: null
+point_cloud_topic: null
+src_coord_system: "flu"

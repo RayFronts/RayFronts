@@ -17,18 +17,29 @@ pose_msg_type: "Odometry"
 # base_link to camera extrinsics (x,y,z in m, roll,pitch,yaw in rad).
 # Set to null if pose is already in camera frame.
 base_to_camera_extrinsics:
+  # modal ai downward
   # x: 0.0584
   # y: 0.05994
   # z: 0.15091
   # roll: 0.0
   # pitch: 1.5708
   # yaw: 0.0
-  x: 0.161
-  y: 0.060
-  z: 0.712
+
+  # modal ai forward
+  x: 0.0834
+  y: 0.05994
+  z: 0.17591
   roll: 0.0
-  pitch: 0.1745
+  pitch: 0.0
   yaw: 0.0
+
+  # Spirit
+  # x: 0.161
+  # y: 0.060
+  # z: 0.712
+  # roll: 0.0
+  # pitch: 0.1745
+  # yaw: 0.0
 
 disparity_topic: null
 confidence_topic: null

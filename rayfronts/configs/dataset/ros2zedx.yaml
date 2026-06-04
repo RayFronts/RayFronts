@@ -28,6 +28,12 @@ confidence_topic: null
 # this is an alternative inefficient depth source to disparity.
 point_cloud_topic: null
 
+# Pose message type: "PoseStamped" or "Odometry"
+pose_msg_type: "PoseStamped"
+
+# base_link to camera extrinsics (x,y,z,roll,pitch,yaw). null if pose is already camera.
+base_to_camera_extrinsics: null
+
 # A string of 3 letters describing the camera coordinate system in
 # r/l u/d f/b in any order. (e.g, rdf, flu, rfu)
 src_coord_system: "flu"

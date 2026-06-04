@@ -30,7 +30,7 @@ point_cloud_frame: "sensor"
 # ---- Extrinsics (ModalAI extrinsics.conf) ----
 # Path to the ModalAI extrinsics.conf file that defines sensor mounting.
 # T_body_rgb and T_body_depth are derived automatically from this file.
-extrinsics_conf_path: ???
+extrinsics_conf_path: /RayFronts/rayfronts/configs/dataset/modalai_config/starmax_bt_extrinsics.conf
 
 # Child frame name in extrinsics.conf for each sensor
 rgb_frame_name: "hires_front"
@@ -40,7 +40,7 @@ depth_frame_name: "tof"
 extrinsics_coord_system: "frd"
 
 # ---- RGB intrinsics (JSON with fx, fy, cx, cy, w, h) ----
-intrinsics_file: ???
+intrinsics_file: /RayFronts/rayfronts/configs/dataset/modalai_config/starmax_bs_hires_intrinsics
 
 # ---- Optional ----
 # ToF confidence map (sensor_msgs/Image)

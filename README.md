@@ -59,6 +59,12 @@
       <a href="#benchmarking">Benchmarking</a>
     </li>
     <li>
+      <a href="#preset-configs">Preset Configs</a>
+    </li>
+    <li>
+      <a href="#faq--wiki">FAQ & Wiki</a>
+    </li>
+    <li>
       <a href="#citing-rayfronts">Citation</a>
     </li>
   </ol>
@@ -146,6 +152,25 @@ python scripts/srchvol_eval.py --config-dir <path_to_config_dir> --config-name <
 Results will populate in the eval_out directory set in the config.
 
 Note that AUC values are computed after the initial results are computed. Use [summarize_srchvol_eval.py](scripts/summarize_srchvol_eval.py) to compute those and any additional derrivative metrics you are interested in.
+
+## Preset Configs
+
+We provide preset configuration files for common deployment scenarios in [experiments/preset_configs](experiments/preset_configs). These serve as starting points — only configs in the paper appendix have been accurately measured and tested. We encourage you to experiment to find the best accuracy/compute/memory tradeoff for your use case.
+
+```bash
+python3 -m rayfronts.mapping_server --config-dir experiments/preset_configs --config-name realtime_orinagx
+```
+
+See the [preset configs README](experiments/preset_configs/README.md) for details on each preset.
+
+## FAQ & Wiki
+
+For common questions and detailed guides, see the [RayFronts Wiki](https://github.com/RayFronts/RayFronts/wiki):
+
+- [FAQ](https://github.com/RayFronts/RayFronts/wiki/FAQ) — Which mapper to use, reducing memory/latency, ROS integration, and more
+- [ROS Messaging Service](https://github.com/RayFronts/RayFronts/wiki/ROS-Messaging-Service) — How to share RayFronts data through ROS
+- [Simulating Semantic Frontiers](https://github.com/RayFronts/RayFronts/wiki/Simulating-Semantic-Frontiers) — Using RayFronts without rays (frontier-only mode)
+- [Zero Depth & Semantic Poses Mode](https://github.com/RayFronts/RayFronts/wiki/Zero-Depth-and-Semantic-Poses-Mode) — Operating without depth sensing
 
 ## Citing RayFronts
 If you find this repository useful, please consider giving a star and citation:

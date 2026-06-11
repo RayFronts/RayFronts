@@ -1,0 +1,30 @@
+defaults:
+  - default
+  - override dataset: ros2zedx
+  - override encoder: radseg
+  - override mapping: semantic_ray_frontiers_map
+  - override vis: null # Visualizers consume resources
+  - override messaging_service: ros
+
+dataset:
+  rgb_resolution: [480, 640] # Controls projected semantics
+  depth_resolution: [480, 640] # Controls projected geometry
+  frame_skip: 3
+  # Topic containing RGB images of type sensor_msgs/msg/Image
+  rgb_topic: "/zed/zed_node/left/image_rect_color"
+  # Topic containing poses of type geometry_msgs/msg/PoseStamped
+  pose_topic: "/zed/zed_node/pose"
+  # Topic containing disparity images of type stereo_msgs/DisparityImage.
+  disparity_topic: "/zed/zed_node/disparity/disparity_image"
+  # Topic containing intrinsics information from messages
+  # of type sensor_msgs/msg/CameraInfo. Will be used at initialization only.
+  intrinsics_topic: "/zed/zed_node/left/camera_info"
+
+
+encoder:
+  model_version: c-radio_v3-b
+  # Whether to return radio features which are not language aligned or whether to
+  # project them to the language aligned space directly.
+  return_radio_features: True
+  # Whether to use automatic mixed precision when inferring.
+  amp: True

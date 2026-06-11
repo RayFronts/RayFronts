@@ -1,0 +1,123 @@
+# This config scales down the memory and compute needed to deploy RayFronts
+# on an embedded device such as an ORIN AGX, you are encouraged to play with configs
+# to reach the best compute/memory/accuracy tradeoff for your usecase.
+
+defaults:
+  - default
+  - override dataset: ros2zedx
+  - override encoder: radseg
+  - override mapping: semantic_ray_frontiers_map
+  - override vis: null # Visualizers consume resources
+  - override feat_compressor: pca
+  - override messaging_service: ros
+
+dataset:
+  rgb_resolution: [224, 320] # Controls projected semantics
+  depth_resolution: [224, 320] # Controls projected geometry
+  frame_skip: 10
+  # Topic containing RGB images of type sensor_msgs/msg/Image
+  rgb_topic: "/zed/zed_node/left/image_rect_color"
+  # Topic containing poses of type geometry_msgs/msg/PoseStamped
+  pose_topic: "/zed/zed_node/pose"
+  # Topic containing disparity images of type stereo_msgs/DisparityImage.
+  disparity_topic: "/zed/zed_node/disparity/disparity_image"
+  # Topic containing intrinsics information from messages
+  # of type sensor_msgs/msg/CameraInfo. Will be used at initialization only.
+  intrinsics_topic: "/zed/zed_node/left/camera_info"
+
+mapping:
+  vox_size: 0.3
+  vox_accum_period: 4
+
+  # How many points to project per frame. Set to -1 to project all valid depth
+  # points.
+  max_pts_per_frame: 3000
+
+  # How many empty points to project per frame. Set to -1 to project all valid 
+  # depth points.
+  max_empty_pts_per_frame: 10000
+
+  # How many semantic rays to cast per frame. Set to -1 to cast all out of range.
+  max_rays_per_frame: 1000
+
+  # Depending on the max sensing range, we project empty voxels up to that range
+  # if depth was not provided for that pixel. Set to -1 to use the max depth in 
+  # that frame as the max sensor range.
+  max_depth_sensing: -1
+
+  # The maximum log odds value for empty voxels. 3 means the cell will be capped
+  # at -3 which corresponds to a probability of e^-3 / ( e^-3 + 1 ) ~= 0.05
+  # Lower values help compression and responsivness to dynamic objects whereas
+  # higher values help stability and retention of more evidence.
+  # (Stored as int8)
+  max_empty_cnt: 5
+
+  # The maximum log odds value for occupied voxels. Same discussion of 
+  # max_empty_cnt applies here. (Stored as int8)
+  max_occ_cnt: 30
+
+  # How much weight does an occupied observation hold over an empty observation.
+  occ_observ_weight: 7
+
+  # When projecting occupied points, how many points do we project as occupied?
+  # e.g. Set to 3 to project 3 points centered around the the original depth
+  # value with vox_size/2 spacing between them. This helps reduce holes in
+  # surfaces.
+  # Warning: this has big implications on memory if your features are huge.
+  occ_thickness: 1
+
+  # How often do we prune occupancy into bigger voxels. Set to -1 to disable.
+  occ_pruning_period: 128
+
+  # Tolerance when consolidating voxels into bigger ones.
+  occ_pruning_tolerance: 2
+
+  # How often do we prune semantic voxels to reflect occupancy (That is erase
+  # semantic voxels that are no longer occupied). Set to -1 to disable.
+  sem_pruning_period: 32
+
+  # Voxels with log-odds occupancy <= this value are removed.
+  sem_pruning_thresh: 5
+
+  ## Frontier calculation
+
+  # After computing frontiers, we subsample using the below factor.
+  fronti_subsampling: 4
+
+  # When subsampling (Clustering frontiers into bigger cells), how many frontiers
+  # should lie in the big cell to consider it as a frontier. This is heavilly tied
+  # to the subsampling factor. Ex. A subsampling factor of 4 means 4^3 cells will
+  # cluster into one cell.
+  fronti_subsampling_min_fronti: 5
+
+  # Bin size when discretizing the angles of rays in degrees.
+  angle_bin_size: 30
+
+  # How often do we accumulate/bin the rays.
+  ray_accum_period: 4
+
+  # A phase term to offset the ray accumulation such that it does not happen
+  # with voxel accumulation.
+  ray_accum_phase: 2
+
+  # Should we erode the out of range depth mask before shooting the rays?
+  # Set to 0 to disable erosion. 1 means an erosion kernel that is 3x3.
+  ray_erosion: 0
+
+  # Enables ray tracing when projecting rays to frontiers. Slows things down but
+  # gives more accurate ray to frontier placement.
+  ray_tracing: False
+
+encoder:
+  model_version: c-radio_v3-b
+  # Whether to return radio features which are not language aligned or whether to
+  # project them to the language aligned space directly.
+  return_radio_features: True
+  # Whether to use automatic mixed precision when inferring.
+  amp: True
+
+feat_compressor:
+  out_dim: 128
+  # You should fit the PCA basis using scripts/fit_feat_compressor on
+  # Your distribution.
+  path: ???

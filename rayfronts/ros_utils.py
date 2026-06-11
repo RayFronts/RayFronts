@@ -41,6 +41,11 @@ import sys
 
 import numpy as np
 import array
+
+try:
+    import cv2
+except ImportError:
+    cv2 = None
 from scipy.spatial.transform import Rotation
 
 from sensor_msgs.msg import PointCloud2, PointField, Image
@@ -102,8 +107,27 @@ name_to_dtypes = {
 }
 
 def image_to_numpy(msg):
-    if not msg.encoding in name_to_dtypes:
-        raise TypeError('Unrecognized encoding {}'.format(msg.encoding))
+    # YUV 4:2:2 packed (UYVY): 2 bytes per pixel, convert to BGR for consistency
+    if msg.encoding == "yuv422":
+        if cv2 is None:
+            raise TypeError("yuv422 decoding requires OpenCV (cv2)")
+        dtype = np.dtype(np.uint8)
+        dtype = dtype.newbyteorder(">" if msg.is_bigendian else "<")
+        # Packed UYVY: row stride = width * 2
+        shape = (msg.height, msg.step)
+        data = np.frombuffer(msg.data, dtype=dtype).reshape(shape)
+        # View as (H, W, 2) for OpenCV UYVY; step may include padding
+        w2 = msg.width * 2
+        if msg.step == w2:
+            packed = data
+        else:
+            packed = np.ascontiguousarray(data[:, :w2])
+        packed = packed.reshape(msg.height, msg.width, 2)
+        bgr = cv2.cvtColor(packed, cv2.COLOR_YUV2BGR_UYVY)
+        return bgr
+
+    if msg.encoding not in name_to_dtypes:
+        raise TypeError("Unrecognized encoding {}".format(msg.encoding))
 
     dtype_class, channels = name_to_dtypes[msg.encoding]
     dtype = np.dtype(dtype_class)

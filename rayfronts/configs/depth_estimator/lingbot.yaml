@@ -1,0 +1,11 @@
+defaults:
+  - base_depth_estimator
+
+_target_: rayfronts.depth_estimators.LingbotDepthEstimator
+
+# Pretrained model identifier for LingBot-Depth.
+model_name: robbyant/lingbot-depth-pretrain-vitl-14-v0.5
+
+# Whether to enable mixed-precision inference when supported.
+use_fp16: ${amp}
+

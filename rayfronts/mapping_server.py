@@ -105,6 +105,10 @@ class MappingServer:
       cfg.mapping, intrinsics_3x3=intrinsics_3x3, visualizer=self.vis,
       **mapper_kwargs)
 
+    self.depth_estimator = None
+    if "depth_estimator" in cfg and cfg.depth_estimator is not None:
+      self.depth_estimator = hydra.utils.instantiate(cfg.depth_estimator)
+
     # Dictionary mapping a label group name to a list of string labels.
     # In the case of a text query, the label is the query. In case of image
     # querying, the label is the image file name.
@@ -245,6 +249,8 @@ class MappingServer:
             compressed=self.cfg.querying.compressed)
           if self.vis is not None and r is not None:
             self.mapper.vis_query_result(r, vis_labels=v, **kwargs)
+          if r is not None and self.messaging_service is not None:
+            self.messaging_service.publish_query_results(r, query_labels=v)
 
         self._queries_updated = False
       with self._status_lock:
@@ -253,6 +259,22 @@ class MappingServer:
           # No need to relog old queries so we clear them.
           self._queries_feats = None
           self._queries_labels.clear()
+
+  def _publish_map_pc(self):
+    """Publish mapper point clouds (e.g. frontiers) via the messaging service."""
+    mapper = self.mapper
+    if hasattr(mapper, "frontiers") and mapper.frontiers is not None \
+        and mapper.frontiers.shape[0] > 0:
+      features = None
+      if (hasattr(mapper, "frontiers_neighbor_cnts")
+          and mapper.frontiers_neighbor_cnts is not None):
+        features = {
+          "empty_cnt": mapper.frontiers_neighbor_cnts[:, 0],
+          "unobserved_cnt": mapper.frontiers_neighbor_cnts[:, 1],
+          "occupied_cnt": mapper.frontiers_neighbor_cnts[:, 2],
+        }
+      self.messaging_service.publish_pc(
+          mapper.frontiers, features=features, layer="frontiers")
 
   @torch.inference_mode()
   def run(self):
@@ -273,11 +295,34 @@ class MappingServer:
       if batch is None:
         break
       rgb_img = batch["rgb_img"].cuda()
-      depth_img = batch["depth_img"].cuda()
       pose_4x4 = batch["pose_4x4"].cuda()
       kwargs = dict()
       if "confidence_map" in batch.keys():
         kwargs["conf_map"] = batch["confidence_map"].cuda()
+
+      has_depth = "depth_img" in batch
+      if not has_depth and self.depth_estimator is None:
+        raise ValueError(
+            "Dataset did not return 'depth_img' and no depth_estimator is "
+            "configured. Either provide depth from the dataset or set a "
+            "depth_estimator in the config.")
+
+      if has_depth:
+        depth_img = batch["depth_img"].cuda()
+      else:
+        depth_img = None
+
+      # Optionally refine / estimate depth here.
+      if self.depth_estimator is not None:
+        depth_init = None if depth_img is None else depth_img.squeeze(1)
+        refined_depth = self.depth_estimator.estimate_depth(
+            rgb_image=rgb_img,
+            depth_init=depth_init,
+            pose_4x4=pose_4x4,
+            intrinsics_3x3=self.dataset.intrinsics_3x3)
+        depth_img = refined_depth.to(rgb_img.device).unsqueeze(1)
+
+      # At this point depth_img must be defined.
 
       if self.cfg.depth_limit >= 0:
         depth_img[torch.logical_and(
@@ -308,6 +353,11 @@ class MappingServer:
 
       if self.cfg.querying.period > 0 and i % self.cfg.querying.period == 0:
         self.run_queries()
+
+      if (self.messaging_service is not None
+          and self.cfg.messaging_publish_period > 0
+          and i % self.cfg.messaging_publish_period == 0):
+        self._publish_map_pc()
 
       if self.vis is not None:
         self.vis.step()

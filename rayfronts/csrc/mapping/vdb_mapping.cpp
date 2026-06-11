@@ -148,8 +148,10 @@ filter_cells(
   uint16_t min_empty,
   uint16_t max_empty,
   uint16_t min_occupied,
-  uint16_t max_occupied) {
+  uint16_t max_occupied,
+  bool return_cnts = false) {
 
+  const size_t num_cols = return_cnts ? 6 : 3;
   std::vector<float> result;
   // Current ijk
   openvdb::Coord ijk;
@@ -203,6 +205,11 @@ filter_cells(
       result.push_back(world_coord.x());
       result.push_back(world_coord.y());
       result.push_back(world_coord.z());
+      if (return_cnts) {
+        result.push_back(static_cast<float>(empty_cnt));
+        result.push_back(static_cast<float>(unobserved_cnt));
+        result.push_back(static_cast<float>(occupied_cnt));
+      }
     }
   }
 
@@ -218,7 +225,7 @@ filter_cells(
 
   return nb::ndarray<nb::pytorch, float, nb::ndim<2>>(
       /* data = */ data,
-      /* shape = */ {result.size() / 3, 3},
+      /* shape = */ {result.size() / num_cols, num_cols},
       /* owner = */ owner
   );
 }
@@ -236,7 +243,10 @@ filter_cells_in_bbox(
   uint16_t min_empty,
   uint16_t max_empty,
   uint16_t min_occupied,
-  uint16_t max_occupied) {
+  uint16_t max_occupied,
+  bool return_cnts = false) {
+
+  const size_t num_cols = return_cnts ? 6 : 3;
 
   openvdb::Coord bbox_min_ijk =
     openvdb::Coord(openvdb::Vec3i(grid.worldToIndex(world_bbox_min)));
@@ -296,6 +306,11 @@ filter_cells_in_bbox(
           result.push_back(world_coord.x());
           result.push_back(world_coord.y());
           result.push_back(world_coord.z());
+          if (return_cnts) {
+            result.push_back(static_cast<float>(empty_cnt));
+            result.push_back(static_cast<float>(unobserved_cnt));
+            result.push_back(static_cast<float>(occupied_cnt));
+          }
         }
       }
     }
@@ -313,7 +328,7 @@ filter_cells_in_bbox(
 
   return nb::ndarray<nb::pytorch, float, nb::ndim<2>>(
       /* data = */ data,
-      /* shape = */ {result.size() / 3, 3},
+      /* shape = */ {result.size() / num_cols, num_cols},
       /* owner = */ owner
   );
 }
@@ -330,7 +345,8 @@ parallel_filter_cells_in_bbox(
   uint16_t min_empty,
   uint16_t max_empty,
   uint16_t min_occupied,
-  uint16_t max_occupied) {
+  uint16_t max_occupied,
+  bool return_cnts = false) {
 
   openvdb::Coord bbox_min_ijk =
     openvdb::Coord(openvdb::Vec3i(grid.worldToIndex(world_bbox_min)));
@@ -410,12 +426,19 @@ parallel_filter_cells_in_bbox(
               thread_results[tid].push_back(world_coord.x());
               thread_results[tid].push_back(world_coord.y());
               thread_results[tid].push_back(world_coord.z());
+              if (return_cnts) {
+                thread_results[tid].push_back(static_cast<float>(empty_cnt));
+                thread_results[tid].push_back(static_cast<float>(unobserved_cnt));
+                thread_results[tid].push_back(static_cast<float>(occupied_cnt));
+              }
             }
           }
         }
       }
     });
   });
+
+  const size_t num_cols = return_cnts ? 6 : 3;
 
   // Copy results from all threads into final buffer
   // We can also do multi-threaded copy but the size is small enough.
@@ -439,7 +462,7 @@ parallel_filter_cells_in_bbox(
 
   return nb::ndarray<nb::pytorch, float, nb::ndim<2>>(
       /* data = */ combined_results,
-      /* shape = */ {total_num_elems / 3, 3},
+      /* shape = */ {total_num_elems / num_cols, num_cols},
       /* owner = */ owner
   );
 }
@@ -463,6 +486,7 @@ NB_MODULE(rayfronts_cpp, m) {
           nb::arg("max_empty") = std::numeric_limits<uint16_t>::max(),
           nb::arg("min_occupied") = 0,
           nb::arg("max_occupied") = std::numeric_limits<uint16_t>::max(),
+          nb::arg("return_cnts") = false,
           nb::rv_policy::reference
     );
 
@@ -480,6 +504,7 @@ NB_MODULE(rayfronts_cpp, m) {
           nb::arg("max_empty") = std::numeric_limits<uint16_t>::max(),
           nb::arg("min_occupied") = 0,
           nb::arg("max_occupied") = std::numeric_limits<uint16_t>::max(),
+          nb::arg("return_cnts") = false,
           nb::rv_policy::reference
     );
 
@@ -496,6 +521,7 @@ NB_MODULE(rayfronts_cpp, m) {
           nb::arg("max_empty") = std::numeric_limits<uint16_t>::max(),
           nb::arg("min_occupied") = 0,
           nb::arg("max_occupied") = std::numeric_limits<uint16_t>::max(),
+          nb::arg("return_cnts") = false,
           nb::rv_policy::reference
     );
 

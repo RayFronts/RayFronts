@@ -213,6 +213,53 @@ def depth_to_pointcloud(depth_img: torch.FloatTensor,
   return world_pts_xyz, selected_indices
 
 
+def world_points_to_depth_image(
+    world_pts_xyz: torch.FloatTensor,
+    pose_4x4: torch.FloatTensor,
+    intrinsics_3x3: torch.FloatTensor,
+    resolution: Tuple[int, int]) -> torch.FloatTensor:
+  """Projects world points into the camera and rasterizes to a depth image.
+
+  Pose is camera-to-world (extrinsics). Points in front of the camera (z > 0)
+  are projected; on pixel overlap the closest depth is kept.
+
+  Args:
+    world_pts_xyz: Nx3 float tensor of points in world coordinates.
+    pose_4x4: 4x4 camera-to-world pose (RDF).
+    intrinsics_3x3: 3x3 RGB camera intrinsics.
+    resolution: (H, W) of the output depth image.
+
+  Returns:
+    A 1xHxW float tensor with depth per pixel; NaN where no point projects.
+  """
+  H, W = resolution
+  device = world_pts_xyz.device
+  cam_pts = transform_points(world_pts_xyz, torch.linalg.inv(pose_4x4))
+  z = cam_pts[:, 2]
+  valid = (z > 0) & torch.isfinite(z)
+  if not valid.any():
+    return torch.full((1, H, W), float("nan"), device=device, dtype=torch.float)
+  cam_pts = cam_pts[valid]
+  z = cam_pts[:, 2]
+  # Project: uv = K @ cam_pts; (u, v) = (x/z, y/z) in pixel coords
+  uv_h = (intrinsics_3x3 @ cam_pts.T).T  # Nx3
+  u = (uv_h[:, 0] / uv_h[:, 2]).long()
+  v = (uv_h[:, 1] / uv_h[:, 2]).long()
+  in_bounds = (u >= 0) & (u < W) & (v >= 0) & (v < H)
+  if not in_bounds.any():
+    return torch.full((1, H, W), float("nan"), device=device, dtype=torch.float)
+  u = u[in_bounds]
+  v = v[in_bounds]
+  z = z[in_bounds]
+  # Rasterize: keep closest (minimum) depth per pixel
+  linear_idx = (v * W + u).long()
+  depth_flat = torch.full(
+      (H * W,), float("inf"), device=device, dtype=torch.float)
+  depth_flat.scatter_reduce_(0, linear_idx, z, reduce="amin", include_self=False)
+  depth_flat[depth_flat == float("inf")] = float("nan")
+  return depth_flat.reshape(1, H, W)
+
+
 def npy_pointcloud_to_sparse_voxels(xyz_pc, vox_size, feat_pc=None,
                                 aggregation="mean", return_counts=False):
   """Numpy version of pointcloud_to_sparse_voxels"""

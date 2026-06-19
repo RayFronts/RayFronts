@@ -5,7 +5,6 @@ RGBD mapping.
 ## Available Options
 - [SemanticPointCloud](semantic_point_cloud.py): A minimal semantic point cloud with no filtering associating a semantic feature with every point. Very memory inefficient and usually used for debugging only.
 - [SemanticVoxelMap](semantic_voxel_map.py): A minimal semantic voxel map storing semantic features with every voxel.
-- [SemSegVoxelMap](semseg_voxel_map.py): This mapping is a special case where it is used to lift 2D semantic segmentation labels to 3D. Works exactly like SemanticVoxelMap but with semantic segmentation discrete images instead.
 - [OccupancyVoxelMap](occ_voxel_map.py): A minimal occupancy voxel map where log odds occupancy is stored in each voxel. Both empty and occupied cells are kept. This map purely uses PyTorch tensors.
 - [OccupancyVdbMap](occ_vdb_map.py): A minimal occupancy voxel map where log odds occupancy is stored in each voxel. Both empty and occupied cells are kept. The map is built on C++ library OpenVDB for efficiency in storing large empty areas.
 - [FrontierVDBMap](frontier_vdb_map.py): Builds on top of OccupancyVdbMap but adds flexible frontier calculation. 

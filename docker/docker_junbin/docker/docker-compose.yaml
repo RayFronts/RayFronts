@@ -1,0 +1,51 @@
+services:
+  rayfront_env:
+    build:
+      context: .
+      args:
+        UID: ${UID:-1000}
+        GID: ${GID:-1000}
+    container_name: rayfront_docker
+    stdin_open: true
+    tty: true
+    working_dir: /RayFronts
+    
+    privileged: true 
+    
+    environment:
+      - DISPLAY=${DISPLAY}
+      - QT_X11_NO_MITSHM=1
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=all
+      - ROS_DOMAIN_ID=1
+      - PYTHONPATH=/RayFronts/lingbot-depth
+    
+    volumes:
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+      - ../RayFronts:/RayFronts
+      - ${HOME}/.Xauthority:/home/dev/.Xauthority:ro
+      - /etc/localtime:/etc/localtime:ro
+      - ../bags:/bags
+    
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    
+    # 解决 PyTorch DataLoader 报错和 ROS 2 进程间零拷贝通信（Zero-copy）的最佳方案
+    ipc: host
+
+    # network host
+    # network_mode: "host"
+    
+    # network airstack
+    networks:
+      - airstack_network
+
+networks:
+  airstack_network:
+    external: true
+    name: airstack_airstack_network

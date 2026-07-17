@@ -1,0 +1,4 @@
+wall
+window
+scaffold
+floor

@@ -1,6 +1,8 @@
 # Experiments
 This directory will include instructions to reproduce the experiments in the 
-RayFronts publication. Note that scores may differ slightly as the code base evolved and is evolving but the relative scores and insights stay the same. If anything is unclear or you face problems feel free to raise an issue.
+RayFronts publication. Note that scores may differ slightly as the code base evolved and is evolving but the relative scores and insights stay the same. See [5efcfb7](/../../commit/5efcfb7e31d6858299012a0b95e3cc31154d9cae) and [0b7b4a7](/../../commit/0b7b4a718fd41804a86bc99ae42744a17a02161a) for normalization bugs fixed post publication that improve NARADIO and Trident segmentation. Revert if reproduction of paper numbers is your goal.
+
+If anything is unclear or you face problems feel free to raise an issue.
 
 ## Online semantic mapping & search volume evaluation
 

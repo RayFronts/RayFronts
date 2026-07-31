@@ -215,7 +215,6 @@ class NARadioEncoder(LangSpatialGlobalImageEncoder):
                                 adaptor_names=[lang_model])
     self.model.eval()
     self.model = self.model.to(self.device)
-    self.model.make_preprocessor_external()
     # Steal adaptors from RADIO so it does not auto compute adaptor output.
     # We want to control when that happens.
     self.lang_adaptor = self.model.adaptors[lang_model]

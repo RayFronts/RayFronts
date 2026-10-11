@@ -94,7 +94,21 @@ In the `render.yml`, specify the `data_root` and `output_dir`. Set `render_dslr`
                 ├── render_rgb
                     ... 
 
-Once the rendering is complete, you must provide the path to these generated depth images when using [scannetpp.py](https://github.com/RayFronts/RayFronts/blob/main/rayfronts/datasets/scannetpp.py)
+### Undistort the Rendered Depth (IMPORTANT)
+
+`common.render` rasterizes with the **distorted fisheye COLMAP camera**
+(it passes the k1-k4 parameters to renderpy), but `scannetpp.py` pairs
+depth with the **undistorted** images and pinhole intrinsics. The
+rendered depth must therefore be undistorted with the same fisheye maps
+used for the images (the official toolkit does this inside
+`dslr.undistort` via `input_depth_dir: render_depth`). Skipping this
+step silently costs ~4 mIoU on the 9-scene eval (measured with
+c-radio_v3-b + RADSeg: 32.18 -> 36.49 after fixing). Apply
+`cv2.fisheye.initUndistortRectifyMap` from `nerfstudio/transforms.json`
+(K, k1-k4, balance=0, centered principal point) and remap each depth
+PNG with `INTER_NEAREST`.
+
+Once the rendering and depth undistortion are complete, you must provide the path to these generated depth images when using [scannetpp.py](https://github.com/RayFronts/RayFronts/blob/main/rayfronts/datasets/scannetpp.py)
 
 ### Get the Ground-Truth 
 

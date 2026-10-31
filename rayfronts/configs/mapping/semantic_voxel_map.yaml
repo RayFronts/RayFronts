@@ -15,6 +15,10 @@ max_pts_per_frame: 1000
 # voxelization.
 vox_accum_period: 8
 
+# Torch dtype in which voxel features are stored, e.g. float16 or bfloat16 to
+# halve the memory of the map.
+feat_dtype: float32
+
 feat_compressor: ${oc.select:feat_compressor, null}
 
 interp_mode: ${interp_mode}

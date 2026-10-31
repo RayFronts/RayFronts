@@ -44,12 +44,15 @@ class SemanticVoxelMap(SemanticRGBDMapping):
     max_pts_per_frame: See __init__.
     vox_size: See __init__.
     windowing: See __init__.
+    feat_dtype: See __init__.
 
     global_vox_xyz: Nx3 Float tensor describing voxel centroids in world
       coordinate frame.
-    global_vox_rgb_feat_conf: (Nx(3+C+1)) Float tensor; 3 for rgb, C for
-      features, 1 for observation confidence. This tensor is aligned with
-      global_vox_xyz. Currently observation confidence is just hit count.
+    global_vox_rgb_conf: (Nx(3+1)) Float tensor; 3 for rgb, 1 for observation
+      confidence. This tensor is aligned with global_vox_xyz. Currently
+      observation confidence is just hit count.
+    global_vox_feat: (NxC) Float tensor of voxel features aligned with
+      global_vox_xyz. They are stored in feat_dtype, and read as float32.
   """
 
   def __init__(self,
@@ -63,7 +66,8 @@ class SemanticVoxelMap(SemanticRGBDMapping):
                max_pts_per_frame: int = 1000,
                vox_size: int = 1,
                vox_accum_period: int = 1,
-               windowing: bool = False):
+               windowing: bool = False,
+               feat_dtype: str = "float32"):
     """
 
     Args:
@@ -84,6 +88,11 @@ class SemanticVoxelMap(SemanticRGBDMapping):
         throughput, and min latency.
       windowing: (Experimental) whether to filter out voxels within the FoV
         window first before aggregation for efficiency.
+      feat_dtype: Name of the torch dtype in which voxel features are stored
+        while mapping and when saved, e.g. "float16" or "bfloat16" to halve
+        their memory. Features are running means whose update never forms
+        their sum, so 16-bit features don't overflow. Colors and hit counts
+        stay float32.
     """
 
     super().__init__(intrinsics_3x3, device, visualizer, clip_bbox, encoder,
@@ -94,55 +103,70 @@ class SemanticVoxelMap(SemanticRGBDMapping):
 
     self.vox_size = vox_size
     self.windowing = windowing
+    self.feat_dtype = getattr(torch, feat_dtype)
 
     # (Nx3)
     self.global_vox_xyz = None
-    # (Nx(3+C+1)) 3 for rgb, C for features, 1 for observation confidence
-    # We keep this in the same tensor to avoid having to constantly continue
-    # concatenating and slicing when performing voxelization.
+    # (Nx(3+1)) 3 for rgb, 1 for observation confidence. Kept in float32 so
+    # that hit counts stay exact whatever feat_dtype is.
     # TODO: Keep conf vs hit count distinctions consistent and clear.
     #   Also cap confidence such that it can be updated with dynamic env.
-    self.global_vox_rgb_feat_conf = None
+    self.global_vox_rgb_conf = None
+    # (NxC) in feat_dtype.
+    self._global_vox_feat = None
 
     # Temporary point cloud accumulation before voxelization
     self.vox_accum_period = vox_accum_period
     self._vox_accum_cnt = 0
     self._tmp_pc_xyz = list()
-    self._tmp_pc_rgb_feat_conf = list()
+    self._tmp_pc_rgb_conf = list()
+    self._tmp_pc_feat = list()
 
   @property
   def global_vox_rgb(self) -> torch.FloatTensor:
-    if self.global_vox_rgb_feat_conf is not None:
-      return self.global_vox_rgb_feat_conf[:, :3]
+    if self.global_vox_rgb_conf is not None:
+      return self.global_vox_rgb_conf[:, :3]
     else:
       return None
 
   @property
   def global_vox_feat(self) -> torch.FloatTensor:
-    if self.global_vox_rgb_feat_conf is not None:
-      return self.global_vox_rgb_feat_conf[:, 3:-1]
+    if self._global_vox_feat is not None:
+      return self._global_vox_feat.float()
     else:
       return None
 
   @property
   def global_vox_conf(self) -> torch.FloatTensor:
-    if self.global_vox_rgb_feat_conf is not None:
-      return self.global_vox_rgb_feat_conf[:, -1:]
+    if self.global_vox_rgb_conf is not None:
+      return self.global_vox_rgb_conf[:, -1:]
     else:
       return None
 
   @override
   def save(self, file_path) -> None:
     torch.save(dict(global_vox_xyz=self.global_vox_xyz,
-                    global_vox_rgb_feat_conf=self.global_vox_rgb_feat_conf),
+                    global_vox_rgb_conf=self.global_vox_rgb_conf,
+                    global_vox_feat=self._global_vox_feat),
                     file_path)
 
   @override
   def load(self, file_path) -> None:
     d = torch.load(file_path, weights_only=True)
     self.global_vox_xyz = d["global_vox_xyz"].to(self.device)
-    self.global_vox_rgb_feat_conf = \
-      d["global_vox_rgb_feat_conf"].to(self.device)
+    if "global_vox_rgb_feat_conf" in d:
+      # Maps saved with rgb, features, and confidence in a single tensor.
+      rgb_feat_conf = d["global_vox_rgb_feat_conf"]
+      d["global_vox_rgb_conf"] = torch.cat(
+        (rgb_feat_conf[:, :3], rgb_feat_conf[:, -1:]), dim=-1)
+      d["global_vox_feat"] = rgb_feat_conf[:, 3:-1]
+      if d["global_vox_feat"].shape[-1] == 0:
+        d["global_vox_feat"] = None
+    self.global_vox_rgb_conf = d["global_vox_rgb_conf"].to(self.device)
+    self._global_vox_feat = d["global_vox_feat"]
+    if self._global_vox_feat is not None:
+      self._global_vox_feat = self._global_vox_feat.to(self.device,
+                                                       self.feat_dtype)
 
   @override
   def is_empty(self) -> bool:
@@ -191,15 +215,10 @@ class SemanticVoxelMap(SemanticRGBDMapping):
       update_info["feat_img"] = feat_img
 
       pts_feat = feat_img.permute(0, 2, 3, 1).reshape(-1, feat_img.shape[1])
-      pts_feat = pts_feat[selected_indices]
+      self._tmp_pc_feat.append(pts_feat[selected_indices])
 
-      pts_rgb_feat_conf = torch.cat(
-        (pts_rgb, pts_feat, torch.ones((N, 1), device=self.device)), dim=-1)
-    else:
-      pts_rgb_feat_conf = torch.cat(
-        (pts_rgb, torch.ones((N, 1), device=self.device)), dim=-1)
-
-    self._tmp_pc_rgb_feat_conf.append(pts_rgb_feat_conf)
+    self._tmp_pc_rgb_conf.append(torch.cat(
+      (pts_rgb, torch.ones((N, 1), device=self.device)), dim=-1))
     self._tmp_pc_xyz.append(pts_xyz)
     self._vox_accum_cnt += B
 
@@ -209,36 +228,115 @@ class SemanticVoxelMap(SemanticRGBDMapping):
 
     return update_info
 
+  def _merge(self, vox_xyz, vox_rgb_conf, vox_feat,
+             pts_xyz, pts_rgb_conf, pts_feat):
+    """Merge points into voxels by updating the voxels' running means.
+
+    The colors and features of a voxel are means over its observations,
+    weighted by the hit count in the last column of vox_rgb_conf, and each
+    point is an observation weighted by the last column of pts_rgb_conf. A
+    voxel with mean f over a weight n that receives points with mean x and
+    total weight m is updated to f + m / (n + m) * (x - f). Unlike
+    (n * f + m * x) / (n + m), this never forms the sum of the voxel's
+    features, so every intermediate value stays on the scale of a single
+    feature, and the update runs in feat_dtype without overflowing. Only the
+    weights, and x, which sums the new points, are computed in float32.
+
+    Args:
+      vox_xyz: Nx3 float tensor of voxel centers, or None if there are no
+        voxels yet.
+      vox_rgb_conf: Nx(3+1) float tensor of voxel colors and hit counts.
+      vox_feat: NxC tensor of voxel features. None if there are no features.
+      pts_xyz: Mx3 float tensor of point positions.
+      pts_rgb_conf: Mx(3+1) float tensor of point colors and weights.
+      pts_feat: MxC tensor of point features. None if there are no features.
+
+    Returns:
+      A tuple of (xyz, rgb_conf, feat) of the merged voxels.
+    """
+    if vox_xyz is None:
+      all_xyz = pts_xyz
+    else:
+      all_xyz = torch.cat((vox_xyz, pts_xyz), dim=0)
+    num_vox = all_xyz.shape[0] - pts_xyz.shape[0]
+
+    # TODO Flooring is faster
+    xyz_vx, reduce_ind = torch.unique(
+      torch.round(all_xyz/self.vox_size).type(torch.int64),
+      return_inverse=True, dim=0)
+    xyz_vx = xyz_vx.type(torch.float)*self.vox_size
+    vox_ind = reduce_ind[:num_vox]
+
+    if num_vox > 0:
+      # Windowing can leave several voxels with the same center. Merge each
+      # group into its first voxel, with the others as observations weighted
+      # by their counts, before merging the points.
+      i = torch.arange(num_vox, device=vox_ind.device)
+      first = torch.full((xyz_vx.shape[0],), num_vox, device=vox_ind.device)
+      first.scatter_reduce_(0, vox_ind, i, "amin")
+      dup = first[vox_ind] != i
+      if dup.any():
+        return self._merge(
+          *self._merge(vox_xyz[~dup], vox_rgb_conf[~dup],
+                       None if vox_feat is None else vox_feat[~dup],
+                       vox_xyz[dup], vox_rgb_conf[dup],
+                       None if vox_feat is None else vox_feat[dup]),
+          pts_xyz, pts_rgb_conf, pts_feat)
+
+    # Voxels that receive points, and which of them each point falls in.
+    upd_ind, pts_upd_ind = torch.unique(reduce_ind[num_vox:],
+                                        return_inverse=True)
+
+    d = pts_xyz.device
+    pts_w = pts_rgb_conf[:, -1:].float()
+    m = torch.zeros((upd_ind.shape[0], 1), device=d, dtype=torch.float32)
+    m.index_add_(0, pts_upd_ind, pts_w)
+    cnt = torch.zeros((xyz_vx.shape[0], 1), device=d, dtype=torch.float32)
+    if num_vox > 0:
+      cnt[vox_ind] = vox_rgb_conf[:, -1:].float()
+    n = cnt[upd_ind]
+    cnt[upd_ind] = n + m
+    frac = m / (n + m)
+
+    def update_mean(vox_val, pts_val, dtype):
+      mean = torch.zeros((xyz_vx.shape[0], pts_val.shape[-1]), device=d,
+                         dtype=dtype)
+      if num_vox > 0:
+        mean[vox_ind] = vox_val.to(dtype)
+      x = torch.zeros((upd_ind.shape[0], pts_val.shape[-1]), device=d,
+                      dtype=torch.float32)
+      x.index_add_(0, pts_upd_ind, pts_val.float() * pts_w)
+      x = (x / m).to(dtype)
+      f = mean[upd_ind]
+      mean[upd_ind] = f + frac.to(dtype) * (x - f)
+      return mean
+
+    rgb = update_mean(None if vox_rgb_conf is None else vox_rgb_conf[:, :3],
+                      pts_rgb_conf[:, :3], torch.float32)
+    feat = None
+    if pts_feat is not None:
+      feat = update_mean(vox_feat, pts_feat, self.feat_dtype)
+
+    return xyz_vx, torch.cat((rgb, cnt), dim=-1), feat
+
   def accum_semantic_voxels(self) -> None:
     """Accumulate the temporarilly gathered semantic points into voxels."""
 
     if len(self._tmp_pc_xyz) == 0:
       return
     pts_xyz = torch.cat(self._tmp_pc_xyz)
-    pts_rgb_feat_conf = torch.cat(self._tmp_pc_rgb_feat_conf, dim=0)
+    pts_rgb_conf = torch.cat(self._tmp_pc_rgb_conf, dim=0)
+    pts_feat = None
+    if len(self._tmp_pc_feat) > 0:
+      pts_feat = torch.cat(self._tmp_pc_feat, dim=0)
     self._tmp_pc_xyz.clear()
-    self._tmp_pc_rgb_feat_conf.clear()
+    self._tmp_pc_rgb_conf.clear()
+    self._tmp_pc_feat.clear()
 
-    if self.global_vox_xyz is None:
-      vox_xyz, vox_rgb_feat_conf, vox_cnts = \
-        g3d.pointcloud_to_sparse_voxels(
-          pts_xyz, feat_pc=pts_rgb_feat_conf,
-          vox_size=self.vox_size, return_counts=True)
-
-      vox_rgb_feat_conf[:, -1] = vox_cnts.squeeze()
-      self.global_vox_xyz = vox_xyz
-      self.global_vox_rgb_feat_conf = vox_rgb_feat_conf
-      return
-
-    if not self.windowing:
-      self.global_vox_xyz, self.global_vox_rgb_feat_conf = \
-        g3d.add_weighted_sparse_voxels(
-          self.global_vox_xyz,
-          self.global_vox_rgb_feat_conf,
-          pts_xyz,
-          pts_rgb_feat_conf,
-          vox_size=self.vox_size
-      )
+    if self.global_vox_xyz is None or not self.windowing:
+      self.global_vox_xyz, self.global_vox_rgb_conf, self._global_vox_feat = \
+        self._merge(self.global_vox_xyz, self.global_vox_rgb_conf,
+                    self._global_vox_feat, pts_xyz, pts_rgb_conf, pts_feat)
       return
 
     # Compute active window/bbox.
@@ -251,21 +349,29 @@ class SemanticVoxelMap(SemanticRGBDMapping):
       torch.all(self.global_vox_xyz >= active_bbox_min, dim=-1),
       torch.all(self.global_vox_xyz <= active_bbox_max, dim=-1))
 
-    global_vox_xyz_update, global_vox_rgb_feat_conf_update = \
-      g3d.add_weighted_sparse_voxels(
-        self.global_vox_xyz[active_bbox_mask],
-        self.global_vox_rgb_feat_conf[active_bbox_mask],
-        pts_xyz,
-        pts_rgb_feat_conf,
-        vox_size=self.vox_size
-      )
+    active_feat = None
+    if self._global_vox_feat is not None:
+      active_feat = self._global_vox_feat[active_bbox_mask]
+
+    xyz_update, rgb_conf_update, feat_update = self._merge(
+      self.global_vox_xyz[active_bbox_mask],
+      self.global_vox_rgb_conf[active_bbox_mask],
+      active_feat,
+      pts_xyz,
+      pts_rgb_conf,
+      pts_feat
+    )
 
     self.global_vox_xyz = torch.cat(
-      [global_vox_xyz_update,
+      [xyz_update,
       self.global_vox_xyz[~active_bbox_mask]], dim=0)
-    self.global_vox_rgb_feat_conf = torch.cat(
-      [global_vox_rgb_feat_conf_update,
-      self.global_vox_rgb_feat_conf[~active_bbox_mask]], dim=0)
+    self.global_vox_rgb_conf = torch.cat(
+      [rgb_conf_update,
+      self.global_vox_rgb_conf[~active_bbox_mask]], dim=0)
+    if feat_update is not None:
+      self._global_vox_feat = torch.cat(
+        [feat_update,
+        self._global_vox_feat[~active_bbox_mask]], dim=0)
 
   @override
   def vis_map(self) -> None:

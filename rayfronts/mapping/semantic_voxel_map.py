@@ -238,9 +238,9 @@ class SemanticVoxelMap(SemanticRGBDMapping):
     voxel with mean f over a weight n that receives points with mean x and
     total weight m is updated to f + m / (n + m) * (x - f). Unlike
     (n * f + m * x) / (n + m), this never forms the sum of the voxel's
-    features, so no value exceeds the magnitude of a single feature, and the
-    features can be stored in 16 bits without overflowing. The update runs in
-    float32 on the voxels that receive points, and is stored in feat_dtype.
+    features, so every intermediate value stays on the scale of a single
+    feature, and the update runs in feat_dtype without overflowing. Only the
+    weights, and x, which sums the new points, are computed in float32.
 
     Args:
       vox_xyz: Nx3 float tensor of voxel centers, or None if there are no
@@ -306,9 +306,9 @@ class SemanticVoxelMap(SemanticRGBDMapping):
       x = torch.zeros((upd_ind.shape[0], pts_val.shape[-1]), device=d,
                       dtype=torch.float32)
       x.index_add_(0, pts_upd_ind, pts_val.float() * pts_w)
-      x /= m
-      f = mean[upd_ind].float()
-      mean[upd_ind] = (f + frac * (x - f)).to(dtype)
+      x = (x / m).to(dtype)
+      f = mean[upd_ind]
+      mean[upd_ind] = f + frac.to(dtype) * (x - f)
       return mean
 
     rgb = update_mean(None if vox_rgb_conf is None else vox_rgb_conf[:, :3],
